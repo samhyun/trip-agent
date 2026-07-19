@@ -58,7 +58,7 @@ export default function MessageRenderer({ message, trip, stage, dispatch }) {
         {type === 'hotel_results' && (
           <HotelResults
             payload={payload}
-            selectedHotel={trip.hotels.find((h) => h.region === payload.cityLabel) || null}
+            selectedHotel={trip.hotels.find((h) => (payload.hotels || []).some((ph) => ph.id === h.id)) || null}
             dispatch={dispatch}
           />
         )}
@@ -67,7 +67,7 @@ export default function MessageRenderer({ message, trip, stage, dispatch }) {
           <RoutePlan payload={payload} activeRoute={trip.routePlan} dispatch={dispatch} />
         )}
 
-        {type === 'itinerary' && <ItineraryTimeline days={payload.days} />}
+        {type === 'itinerary' && <ItineraryTimeline payload={payload} />}
 
         {type === 'booking_summary' && <BookingSummary rows={payload.rows} total={payload.total} />}
 

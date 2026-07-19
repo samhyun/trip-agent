@@ -51,9 +51,9 @@ export default function FlightResults({ payload, selectedFlight, dispatch }) {
   const lowestKey = dates?.find((d) => d.low)?.key ?? dates?.[0]?.key
   const [selectedDate, setSelectedDate] = useState(selectedFlight?.date ?? lowestKey)
 
-  const selectFlight = (item, date, wd) => {
+  const selectFlight = (item, date, wd, isoDate) => {
     if (locked) return
-    dispatch({ type: 'SELECT_FLIGHT', flight: { ...item, date, wd } })
+    dispatch({ type: 'SELECT_FLIGHT', flight: { ...item, date, wd, isoDate } })
   }
 
   if (mode === 'byDate') {
@@ -98,7 +98,7 @@ export default function FlightResults({ payload, selectedFlight, dispatch }) {
               item={item}
               selected={isSameFlight(selectedFlight, item, activeDate.key)}
               locked={locked}
-              onSelect={() => selectFlight(item, activeDate.key, activeDate.wd)}
+              onSelect={() => selectFlight(item, activeDate.key, activeDate.wd, activeDate.isoDate)}
             />
           ))}
         </div>

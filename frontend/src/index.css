@@ -1050,6 +1050,40 @@ a:hover {
   font-size: 13.5px;
 }
 
+/* itinerary — markdown 렌더 (백엔드 LLM 서술형 일정) */
+.itinerary-md {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.itinerary-md__heading {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--primary);
+  margin-top: 8px;
+}
+.itinerary-md__heading:first-child {
+  margin-top: 0;
+}
+.itinerary-md__item {
+  display: flex;
+  gap: 7px;
+  align-items: baseline;
+}
+.itinerary-md__dot {
+  color: var(--primary);
+  font-weight: 800;
+}
+.itinerary-md__line {
+  color: var(--text);
+}
+.itinerary-md__gap {
+  height: 6px;
+}
+
 /* ==================== Booking summary ==================== */
 .booking-summary__header {
   padding: 13px 16px;

@@ -47,13 +47,7 @@ def destination_node(state: State) -> Command:
         return _card("여행지를 파악하지 못했어요. 도시를 알려주세요.", "destination", "text", {}, visited)
     city = cities[0]
     attractions = ts.get_attractions(city)
-    payload = {
-        "city": city,
-        "items": [
-            {"name": a["name"], "area": a.get("area"), "tags": a.get("tags", []), "desc": a.get("desc", "")}
-            for a in attractions
-        ],
-    }
+    payload = ts.build_destination_payload(city, attractions)
     logger.info("destination[%s] 명소 %d개", city, len(attractions))
     return _card(f"{city} 인기 명소를 골라봤어요 👇", "destination", "destination_carousel", payload, visited)
 
@@ -62,7 +56,8 @@ def itinerary_node(state: State) -> Command:
     """일자별 일정을 LLM으로 서술 (itinerary 카드)."""
     visited = state.get("visited", [])
     if not get_settings().llm_enabled:
-        return _card("📅 Day1 주요 명소 / Day2 근교 코스 (mock)", "itinerary", "itinerary", {}, visited)
+        mock = "### Day 1\n- 주요 명소 관광\n\n### Day 2\n- 근교 코스 (mock)"
+        return _card(mock, "itinerary", "itinerary", {"markdown": mock}, visited)
     system = (
         "너는 일정·동선 설계 전담이야. 예약·결제 얘기는 하지 말고, 대화에 나온 목적지·기간·명소로 "
         "Day별 일정표를 간결히 작성해. 여러 도시를 방문하면 방문 순서와 이동 동선도 제안해. 한국어로."
@@ -91,24 +86,23 @@ def booking_node(state: State) -> Command:
     if flights:
         messages.append(
             AIMessage(
-                content=f"{flights['route_key']} 날짜별 가격이에요",
+                content=f"{flights.get('route', flights['route_key'])} 날짜별 최저가예요. 원하는 날짜를 골라주세요 ✈️",
                 name="booking",
                 additional_kwargs={
                     "card_type": "flight_results",
-                    "payload": {
-                        "route": flights["route_key"],
-                        "duration": flights.get("duration"),
-                        "date_prices": flights["date_prices"],
-                    },
+                    "payload": ts.build_flight_payload(flights),
                 },
             )
         )
     if hotels:
         messages.append(
             AIMessage(
-                content=f"{city} 숙소 옵션이에요",
+                content=f"{city} 숙소 옵션이에요. 마음에 드는 곳을 예약해 주세요 🏨",
                 name="booking",
-                additional_kwargs={"card_type": "hotel_results", "payload": {"city": city, "hotels": hotels}},
+                additional_kwargs={
+                    "card_type": "hotel_results",
+                    "payload": ts.build_hotel_payload(city, hotels),
+                },
             )
         )
     if not messages:
@@ -118,8 +112,22 @@ def booking_node(state: State) -> Command:
 
 
 def payment_node(state: State) -> Command:
-    """더미 결제 확정서 카드(confirmation)."""
+    """더미 결제 확정서 카드(confirmation) — 프론트 ConfirmationCard 계약."""
     visited = state.get("visited", [])
-    confirmation = ts.make_confirmation()
-    payload = {"confirmation_no": confirmation, "method": "dummy", "status": "paid"}
-    return _card(f"💳 결제 완료! 확정번호 {confirmation}", "payment", "confirmation", payload, visited)
+    text = _all_text(state["messages"])
+    cities = ts.find_cities(text)
+    travelers = ts.parse_people(text)  # 대화에서 추출, 없으면 2
+    nights = ts.parse_nights(text)  # 대화에서 추출, 없으면 3
+    code = ts.make_confirmation()
+    title = (" + ".join(cities) if cities else "여행") + " 예약"
+    payload = {
+        "code": code,
+        "title": title,
+        "dateLabel": "",  # 백엔드는 선택 날짜를 추적하지 않음 → 프론트가 로컬 선택값으로 덮어씀
+        # 개략 합계(인원·박수·최저가 반영) → 프론트가 실제 선택 합계로 덮어씀
+        # NOTE(보류): 무상태 구조라 서버측 선택 검증은 데모 스코프 밖. 프론트 선택값이 최종.
+        "total": ts.estimate_total(cities, travelers, nights),
+        "method": "dummy",
+        "status": "paid",
+    }
+    return _card(f"💳 결제 완료! 확정번호 {code}", "payment", "confirmation", payload, visited)

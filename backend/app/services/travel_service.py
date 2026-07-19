@@ -4,6 +4,7 @@
 "실 API 시도 → 실패/키없음 → 아래 mock" 순으로 폴백하도록 확장한다.
 """
 
+import re
 from datetime import datetime
 
 from app.core.config import get_settings
@@ -56,6 +57,147 @@ def search_hotels(city: str, area: str | None = None) -> list[dict]:
 def search_activities(city: str) -> list[dict]:
     """도시의 액티비티 목록."""
     return load("activities").get(city, [])
+
+
+# ----- 프론트 카드 페이로드 변환 -----
+# 프론트 리치카드 컴포넌트(frontend/src/components/messages/*)가 기대하는 스키마에
+# 맞춰 조회 결과를 정형화한다. (계약: docs/design.md 프론트 연동)
+
+_WEEKDAYS = ["월", "화", "수", "목", "금", "토", "일"]
+
+
+def _date_key(iso: str) -> tuple[str, str]:
+    """'2026-07-24' → ('7.24', '금'). 프론트 date-pill 표기용."""
+    d = datetime.strptime(iso, "%Y-%m-%d")
+    return f"{d.month}.{d.day}", _WEEKDAYS[d.weekday()]
+
+
+def build_destination_payload(city: str, attractions: list[dict]) -> dict:
+    """destination_carousel 카드 페이로드 (프론트 DestinationCarousel 계약).
+
+    item = {id, name, tags(#접두), gradient, area, desc}
+    """
+    items = [
+        {
+            "id": a.get("id") or f"{city}-spot-{i}",
+            "name": a["name"],
+            "tags": [f"#{t}" for t in a.get("tags", [])],
+            "gradient": a.get("gradient", i),
+            "area": a.get("area"),
+            "desc": a.get("desc", ""),
+        }
+        for i, a in enumerate(attractions)
+    ]
+    return {"city": city, "items": items}
+
+
+def build_flight_payload(flights: dict) -> dict:
+    """flight_results 카드 페이로드 (프론트 FlightResults byDate 계약).
+
+    {mode:'byDate', route, dates:[{key,wd,price,low}], flightsByDate:{key:[{air,dep,arr,dur,price,tag,route}]}}
+    """
+    date_prices = flights.get("date_prices", [])
+    duration = flights.get("duration", "")
+    route = flights.get("route", flights.get("route_key", ""))
+    lowest_overall = min((dp["lowest"] for dp in date_prices), default=None)
+
+    dates: list[dict] = []
+    flights_by_date: dict[str, list[dict]] = {}
+    for dp in date_prices:
+        key, wd = _date_key(dp["date"])
+        # key/label 은 표시용, isoDate 는 프론트의 식별·날짜 계산용(월말 오버플로 방지)
+        dates.append(
+            {
+                "key": key,
+                "isoDate": dp["date"],
+                "wd": wd,
+                "price": dp["lowest"],
+                "low": dp["lowest"] == lowest_overall,
+            }
+        )
+        cheapest = min((f["price"] for f in dp["flights"]), default=None)
+        cards = []
+        for f in dp["flights"]:
+            card = {
+                "air": f["airline"],
+                "dep": f["dep"],
+                "arr": f["arr"],
+                "dur": duration,
+                "price": f["price"],
+                "route": route,
+            }
+            if f["price"] == cheapest and dp["lowest"] == lowest_overall:
+                card["tag"] = "최저가"
+            cards.append(card)
+        flights_by_date[key] = cards
+
+    return {"mode": "byDate", "route": route, "dates": dates, "flightsByDate": flights_by_date}
+
+
+def build_hotel_payload(city: str, hotels: list[dict]) -> dict:
+    """hotel_results 카드 페이로드 (프론트 HotelResults 계약).
+
+    {city, cityLabel, banner, regions?, hotels:[{id,name,region,meta,price,rating,gradient}]}
+    """
+    areas: list[str] = []
+    cards = []
+    for i, h in enumerate(hotels):
+        area = h.get("area", city)
+        if area not in areas:
+            areas.append(area)
+        cards.append(
+            {
+                "id": h.get("id") or f"{city}-hotel-{i}",
+                "name": h["name"],
+                "region": area,
+                "meta": " · ".join(h.get("tags", [])),
+                "price": h.get("price", h.get("price_per_night", 0)),
+                "rating": h.get("rating"),
+                "gradient": h.get("gradient", i),
+            }
+        )
+    payload = {
+        "city": city,
+        "cityLabel": city,
+        "banner": f"{city} 숙소 · 평점순",
+        "hotels": cards,
+    }
+    if len(areas) > 1:
+        payload["regions"] = ["전체", *areas]
+    return payload
+
+
+def parse_people(text: str, default: int = 2) -> int:
+    """대화 텍스트에서 인원 추출. 못 얻으면 기본값(2)."""
+    m = re.search(r"(\d+)\s*(명|인|사람)", text)
+    if m:
+        return int(m.group(1))
+    if "혼자" in text:
+        return 1
+    if "둘이" in text or "두 명" in text or "두명" in text:
+        return 2
+    return default
+
+
+def parse_nights(text: str, default: int = 3) -> int:
+    """대화 텍스트에서 숙박 박수 추출. 못 얻으면 기본값(3)."""
+    m = re.search(r"(\d+)\s*박", text)
+    return int(m.group(1)) if m else default
+
+
+def estimate_total(cities: list[str], travelers: int = 2, nights: int = 3) -> int:
+    """확정서용 개략 합계 = 최저가 항공×인원 + 최저가 숙소×박수. 프론트가 실제 선택가로 덮어쓴다."""
+    total = 0
+    for city in cities:
+        flights = search_flights(city)
+        if flights and flights.get("date_prices"):
+            cheapest_flight = min(dp["lowest"] for dp in flights["date_prices"])
+            total += cheapest_flight * travelers
+        hotels = load("hotels").get(city, [])
+        if hotels:
+            cheapest_hotel = min(h.get("price_per_night", 0) for h in hotels)
+            total += cheapest_hotel * nights
+    return total
 
 
 # ----- 결제(더미) -----
