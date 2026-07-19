@@ -18,8 +18,47 @@ logger = get_logger(__name__)
 
 
 def _all_text(messages) -> str:
-    """대화 전체 텍스트 (목적지 추출용)."""
+    """대화 전체 텍스트."""
     return " ".join(m.content for m in messages if isinstance(getattr(m, "content", None), str))
+
+
+def _user_text(messages) -> str:
+    """사용자 발화만 이어붙인다 (목적지 추출용).
+
+    봇 메시지의 예시(예: '출발 공항은? 인천·부산 등')가 목적지로 오인되는 것을 막는다.
+    """
+    return " ".join(
+        m.content
+        for m in messages
+        if getattr(m, "type", None) == "human" and isinstance(getattr(m, "content", None), str)
+    )
+
+
+_NEGATION_MARKERS = ("말고", "말구", "대신", "아니라", "보다는")
+
+
+def _resolve_cities(messages) -> list[str]:
+    """최신 사용자 발화부터 거슬러 올라가며 지원 도시를 찾는다.
+
+    '제주 말고 부산'처럼 정정하면 부정어(말고·대신 등) 뒤의 도시를 우선한다. 없으면 [].
+    """
+    for m in reversed(messages):
+        if getattr(m, "type", None) == "human" and isinstance(getattr(m, "content", None), str):
+            text = m.content
+            cities = ts.find_cities(text)
+            if not cities:
+                continue
+            for marker in _NEGATION_MARKERS:
+                if marker in text:
+                    after = ts.find_cities(text.split(marker, 1)[1])
+                    if after:
+                        return after  # 부정어 뒤 도시가 실제 의도
+            return cities
+    return []
+
+
+# 도시를 못 잡았을 때 안내 (지원 목적지 명시)
+_NO_CITY_MSG = "여행지를 파악하지 못했어요. 현재는 제주·부산·세부·보홀을 도와드릴 수 있어요."
 
 
 def _card(content: str, name: str, card_type: str, payload: dict, visited: list) -> Command:
@@ -42,9 +81,9 @@ def _card(content: str, name: str, card_type: str, payload: dict, visited: list)
 def destination_node(state: State) -> Command:
     """여행지 명소를 카드(destination_carousel)로."""
     visited = state.get("visited", [])
-    cities = ts.find_cities(_all_text(state["messages"]))
+    cities = _resolve_cities(state["messages"])
     if not cities:
-        return _card("여행지를 파악하지 못했어요. 도시를 알려주세요.", "destination", "text", {}, visited)
+        return _card(_NO_CITY_MSG, "destination", "text", {}, visited)
     city = cities[0]
     attractions = ts.get_attractions(city)
     payload = ts.build_destination_payload(city, attractions)
@@ -69,11 +108,11 @@ def itinerary_node(state: State) -> Command:
 def booking_node(state: State) -> Command:
     """항공·숙소 검색 결과를 각각 카드(flight_results / hotel_results)로."""
     visited = state.get("visited", [])
-    cities = ts.find_cities(_all_text(state["messages"]))
+    cities = _resolve_cities(state["messages"])
     if not cities:
         return Command(
             update={
-                "messages": [AIMessage(content="여행지를 파악하지 못해 검색을 진행하지 못했어요.", name="booking")],
+                "messages": [AIMessage(content=_NO_CITY_MSG, name="booking")],
                 "visited": visited + ["booking"],
             },
             goto="supervisor",
@@ -114,8 +153,8 @@ def booking_node(state: State) -> Command:
 def payment_node(state: State) -> Command:
     """더미 결제 확정서 카드(confirmation) — 프론트 ConfirmationCard 계약."""
     visited = state.get("visited", [])
-    text = _all_text(state["messages"])
-    cities = ts.find_cities(text)
+    text = _user_text(state["messages"])  # 인원·박수 파싱용 (사용자 발화만)
+    cities = _resolve_cities(state["messages"])
     travelers = ts.parse_people(text)  # 대화에서 추출, 없으면 2
     nights = ts.parse_nights(text)  # 대화에서 추출, 없으면 3
     code = ts.make_confirmation()

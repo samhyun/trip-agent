@@ -1619,3 +1619,14 @@ a:hover {
   color: var(--text); cursor: pointer; text-align: left;
 }
 .auth-menu-item:hover { background: var(--panel); }
+
+/* ==================== 챗 마크다운 (봇 응답 가독성) ==================== */
+.chat-md { display: flex; flex-direction: column; }
+.chat-md__gap { height: 8px; }
+.chat-md__p { line-height: 1.62; }
+.chat-md__h { font-weight: 800; font-size: 14.5px; margin: 3px 0 1px; letter-spacing: -0.01em; }
+.chat-md__item { display: flex; gap: 8px; line-height: 1.55; padding: 1.5px 0; }
+.chat-md__num { color: var(--primary); font-weight: 700; flex: none; min-width: 17px; font-variant-numeric: tabular-nums; }
+.chat-md__dot { color: var(--primary); flex: none; line-height: 1.55; }
+.rich-link { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
+.rich-link:hover { color: var(--accent); }
