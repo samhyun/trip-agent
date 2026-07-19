@@ -99,6 +99,7 @@ def build_destination_payload(city: str, attractions: list[dict]) -> dict:
             "gradient": a.get("gradient", i),
             "area": a.get("area"),
             "desc": a.get("desc", ""),
+            "image": a.get("image"),
         }
         for i, a in enumerate(attractions)
     ]
@@ -168,6 +169,7 @@ def build_hotel_payload(city: str, hotels: list[dict]) -> dict:
                 "price": h.get("price", h.get("price_per_night", 0)),
                 "rating": h.get("rating"),
                 "gradient": h.get("gradient", i),
+                "image": h.get("image"),
             }
         )
     payload = {

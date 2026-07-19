@@ -140,6 +140,7 @@ def search_stays(city: str, limit: int = 6) -> list[dict] | None:
                 "rating": _rating5(h.get("rating")) or 4.3,
                 "tags": [f"{stars}성"] if stars else [meta["en"]],
                 "gradient": i % 6,
+                "image": h.get("main_photo") or h.get("thumbnail") or None,
                 "lat": h.get("latitude"),
                 "lng": h.get("longitude"),
             }

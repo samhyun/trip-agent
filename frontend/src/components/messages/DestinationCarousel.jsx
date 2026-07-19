@@ -1,4 +1,4 @@
-import { gradientFor } from '../../lib/gradients'
+import CardThumb from './CardThumb'
 
 export default function DestinationCarousel({ items, selectedIds, dispatch }) {
   return (
@@ -7,9 +7,13 @@ export default function DestinationCarousel({ items, selectedIds, dispatch }) {
         const added = selectedIds.includes(item.id)
         return (
           <div key={item.id} className="dest-card">
-            <div className="dest-card__thumb" style={{ backgroundImage: `${gradientFor(item.gradient)}, repeating-linear-gradient(45deg, oklch(1 0 0 / 0.06) 0 8px, transparent 8px 16px)` }}>
-              [ {item.name} 사진 ]
-            </div>
+            <CardThumb
+              image={item.image}
+              gradient={item.gradient}
+              label={`[ ${item.name} 사진 ]`}
+              className="dest-card__thumb"
+              stripe={8}
+            />
             <div className="dest-card__body">
               <span className="dest-card__title">{item.name}</span>
               <div className="dest-card__tags">

@@ -1630,3 +1630,13 @@ a:hover {
 .chat-md__dot { color: var(--primary); flex: none; line-height: 1.55; }
 .rich-link { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
 .rich-link:hover { color: var(--accent); }
+
+/* ==================== 카드 썸네일 사진 (명소·호텔) ==================== */
+.card-thumb-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}

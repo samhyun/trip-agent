@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { won } from '../../lib/format'
-import { gradientFor } from '../../lib/gradients'
+import CardThumb from './CardThumb'
 
 export default function HotelResults({ payload, selectedHotel, dispatch }) {
   const { banner, regions, hotels, cityLabel } = payload
@@ -39,9 +39,13 @@ export default function HotelResults({ payload, selectedHotel, dispatch }) {
               key={hotel.id}
               className={`hotel-card${isSelected ? ' hotel-card--selected' : ''}${locked && !isSelected ? ' hotel-card--disabled' : ''}`}
             >
-              <div className="hotel-card__thumb" style={{ backgroundImage: `${gradientFor(hotel.gradient ?? 0)}, repeating-linear-gradient(45deg, oklch(1 0 0 / 0.06) 0 7px, transparent 7px 14px)` }}>
-                [ 호텔 ]
-              </div>
+              <CardThumb
+                image={hotel.image}
+                gradient={hotel.gradient ?? 0}
+                label="[ 호텔 ]"
+                className="hotel-card__thumb"
+                stripe={7}
+              />
               <div className="hotel-card__body">
                 <div className="hotel-card__name-row">
                   <span className="hotel-card__name">{hotel.name}</span>

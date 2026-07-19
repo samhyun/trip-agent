@@ -121,6 +121,11 @@ def _sigungu(addr1: str | None, fallback: str) -> str:
     return parts[1] if len(parts) > 1 else parts[0]
 
 
+def _https(url: str | None) -> str | None:
+    """관광공사 이미지가 http로 오면 https로 승격(https 배포 시 mixed-content 차단 방지)."""
+    return url.replace("http://", "https://", 1) if url and url.startswith("http://") else url
+
+
 def _coords(item: dict) -> dict:
     """mapx(경도)·mapy(위도) → lat/lng (동선 최적화용). 없으면 빈 dict."""
     try:
@@ -166,6 +171,7 @@ def _to_attraction(it: dict, city: str, i: int) -> dict:
         "tags": tags,
         "desc": (it.get("addr1") or "").strip(),
         "gradient": i % 6,
+        "image": _https(it.get("firstimage") or it.get("firstimage2")),
         **_coords(it),
     }
 
@@ -235,6 +241,7 @@ def search_stays(city: str, limit: int = 6) -> list[dict] | None:
                 "rating": _demo_rating(cid),
                 "tags": tags,
                 "gradient": i % 6,
+                "image": _https(it.get("firstimage") or it.get("firstimage2")),
                 **_coords(it),
             }
         )
