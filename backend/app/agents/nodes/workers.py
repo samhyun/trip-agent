@@ -34,31 +34,53 @@ def _user_text(messages) -> str:
     )
 
 
-_NEGATION_MARKERS = ("말고", "말구", "대신", "아니라", "보다는")
+# 도시를 못 잡았을 때 안내 (지원 목적지 명시)
+_NO_CITY_MSG = "여행지를 파악하지 못했어요. 현재는 제주·부산·세부·보홀을 도와드릴 수 있어요."
 
 
-def _resolve_cities(messages) -> list[str]:
-    """최신 사용자 발화부터 거슬러 올라가며 지원 도시를 찾는다.
-
-    '제주 말고 부산'처럼 정정하면 부정어(말고·대신 등) 뒤의 도시를 우선한다. 없으면 [].
-    """
+def _scan_user_cities(messages) -> list[str]:
+    """폴백/교차검증: 최신 사용자 발화부터 지원 도시를 스캔(LLM 미설정·오추출 대비)."""
     for m in reversed(messages):
         if getattr(m, "type", None) == "human" and isinstance(getattr(m, "content", None), str):
-            text = m.content
-            cities = ts.find_cities(text)
-            if not cities:
-                continue
-            for marker in _NEGATION_MARKERS:
-                if marker in text:
-                    after = ts.find_cities(text.split(marker, 1)[1])
-                    if after:
-                        return after  # 부정어 뒤 도시가 실제 의도
-            return cities
+            cities = ts.find_cities(m.content)
+            if cities:
+                return cities
     return []
 
 
-# 도시를 못 잡았을 때 안내 (지원 목적지 명시)
-_NO_CITY_MSG = "여행지를 파악하지 못했어요. 현재는 제주·부산·세부·보홀을 도와드릴 수 있어요."
+def _resolve_destination(state) -> tuple[list[str], str]:
+    """(지원 도시 목록, 원시 목적지명).
+
+    coordinator가 LLM으로 추출한 `trip.destination`을 우선한다(자연어·정정·오타 처리). 지원 도시로
+    매칭되면 사용하고, 매칭 안 되면 사용자 발화를 교차검증(LLM 오추출 대비), 그래도 없으면 미지원.
+    LLM이 목적지를 못 냈으면(mock 등) 사용자 발화 스캔으로 폴백. raw는 미지원이어도 안내에 쓴다.
+    """
+    scan = _scan_user_cities(state["messages"])
+    dest = (state.get("trip") or {}).get("destination", "").strip()
+    if dest:
+        cities = ts.find_cities(dest)
+        if cities:
+            return cities, dest
+        if scan:  # LLM 목적지가 지원 도시로 매칭 안 됨 → 발화 교차검증 우선
+            return scan, ""
+        return [], dest  # 정말 미지원 → raw로 안내
+    return (scan, "") if scan else ([], "")
+
+
+def _pos_int(value, fallback: int, hi: int) -> int:
+    """구조화 출력값을 1~hi 범위 정수로 검증(음수·문자열·과대값 방어). 아니면 fallback."""
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return n if 1 <= n <= hi else fallback
+
+
+def _unsupported_msg(raw: str) -> str:
+    """미지원/미파악 목적지 안내. raw가 있으면 그 도시명을 짚어준다."""
+    if raw:
+        return f"'{raw}'는 아직 지원하지 않는 여행지예요. 현재는 제주·부산·세부·보홀을 도와드릴 수 있어요."
+    return _NO_CITY_MSG
 
 
 def _card(content: str, name: str, card_type: str, payload: dict, visited: list) -> Command:
@@ -81,9 +103,9 @@ def _card(content: str, name: str, card_type: str, payload: dict, visited: list)
 def destination_node(state: State) -> Command:
     """여행지 명소를 카드(destination_carousel)로."""
     visited = state.get("visited", [])
-    cities = _resolve_cities(state["messages"])
+    cities, raw = _resolve_destination(state)
     if not cities:
-        return _card(_NO_CITY_MSG, "destination", "text", {}, visited)
+        return _card(_unsupported_msg(raw), "destination", "text", {}, visited)
     city = cities[0]
     attractions = ts.get_attractions(city)
     payload = ts.build_destination_payload(city, attractions)
@@ -108,11 +130,11 @@ def itinerary_node(state: State) -> Command:
 def booking_node(state: State) -> Command:
     """항공·숙소 검색 결과를 각각 카드(flight_results / hotel_results)로."""
     visited = state.get("visited", [])
-    cities = _resolve_cities(state["messages"])
+    cities, raw = _resolve_destination(state)
     if not cities:
         return Command(
             update={
-                "messages": [AIMessage(content=_NO_CITY_MSG, name="booking")],
+                "messages": [AIMessage(content=_unsupported_msg(raw), name="booking")],
                 "visited": visited + ["booking"],
             },
             goto="supervisor",
@@ -153,10 +175,12 @@ def booking_node(state: State) -> Command:
 def payment_node(state: State) -> Command:
     """더미 결제 확정서 카드(confirmation) — 프론트 ConfirmationCard 계약."""
     visited = state.get("visited", [])
-    text = _user_text(state["messages"])  # 인원·박수 파싱용 (사용자 발화만)
-    cities = _resolve_cities(state["messages"])
-    travelers = ts.parse_people(text)  # 대화에서 추출, 없으면 2
-    nights = ts.parse_nights(text)  # 대화에서 추출, 없으면 3
+    trip = state.get("trip") or {}
+    text = _user_text(state["messages"])  # 파싱 폴백용 (사용자 발화만)
+    cities, _ = _resolve_destination(state)
+    # LLM 추출 슬롯은 범위 검증 후 사용, 아니면 발화 파싱으로 폴백
+    travelers = _pos_int(trip.get("travelers"), ts.parse_people(text), 30)
+    nights = _pos_int(trip.get("nights"), ts.parse_nights(text), 60)
     code = ts.make_confirmation()
     title = (" + ".join(cities) if cities else "여행") + " 예약"
     payload = {
