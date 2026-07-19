@@ -1,0 +1,19 @@
+{
+  "제주": [
+    { "name": "제주신라호텔", "area": "서귀포", "price_per_night": 150000, "rating": 4.6, "tags": ["오션뷰", "조식포함", "수영장"] },
+    { "name": "그랜드하얏트 제주", "area": "제주시", "price_per_night": 132000, "rating": 4.5, "tags": ["시티뷰", "카지노 인접"] },
+    { "name": "애월 감성 게스트하우스", "area": "애월", "price_per_night": 68000, "rating": 4.3, "tags": ["가성비", "해안도로"] }
+  ],
+  "부산": [
+    { "name": "파라다이스 호텔 부산", "area": "해운대", "price_per_night": 175000, "rating": 4.6, "tags": ["오션뷰", "스파"] },
+    { "name": "라발스 호텔", "area": "광안리", "price_per_night": 98000, "rating": 4.4, "tags": ["광안대교 뷰"] }
+  ],
+  "세부": [
+    { "name": "제이파크 아일랜드 리조트", "area": "막탄", "price_per_night": 142000, "rating": 4.5, "tags": ["워터파크", "올인클루시브"] },
+    { "name": "세부 시티 비즈니스 호텔", "area": "세부시티", "price_per_night": 62000, "rating": 4.1, "tags": ["가성비", "시내중심"] }
+  ],
+  "보홀": [
+    { "name": "헤난 리조트 알로나비치", "area": "팡라오", "price_per_night": 118000, "rating": 4.6, "tags": ["비치프론트", "수영장"] },
+    { "name": "보홀 비 팜 인", "area": "팡라오", "price_per_night": 54000, "rating": 4.2, "tags": ["가성비", "로컬푸드"] }
+  ]
+}

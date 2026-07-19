@@ -1,0 +1,49 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: tripagent
+      POSTGRES_PASSWORD: tripagent
+      POSTGRES_DB: tripagent
+    ports:
+      # 로컬 Postgres(5432)와 겹치지 않도록 호스트 5433 → 컨테이너 5432
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tripagent"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # 컨테이너 내부에서는 db 서비스명:5432 로 접속 (.env 값보다 우선)
+      - DATABASE_URL=postgresql+psycopg://tripagent:tripagent@db:5432/tripagent
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

@@ -1,0 +1,37 @@
+{
+  "김포-제주": {
+    "route": "김포(GMP) → 제주(CJU)",
+    "duration": "1시간 10분",
+    "date_prices": [
+      { "date": "2026-07-24", "lowest": 89000, "flights": [
+        { "airline": "대한항공", "dep": "07:30", "arr": "08:40", "price": 89000 },
+        { "airline": "진에어", "dep": "11:20", "arr": "12:25", "price": 94000 },
+        { "airline": "제주항공", "dep": "19:10", "arr": "20:20", "price": 112000 }
+      ] },
+      { "date": "2026-07-25", "lowest": 112000, "flights": [
+        { "airline": "대한항공", "dep": "09:00", "arr": "10:10", "price": 112000 },
+        { "airline": "아시아나", "dep": "14:40", "arr": "15:50", "price": 118000 }
+      ] },
+      { "date": "2026-07-26", "lowest": 95000, "flights": [
+        { "airline": "진에어", "dep": "08:15", "arr": "09:25", "price": 95000 },
+        { "airline": "제주항공", "dep": "17:30", "arr": "18:40", "price": 121000 }
+      ] },
+      { "date": "2026-07-27", "lowest": 98000, "flights": [
+        { "airline": "대한항공", "dep": "10:20", "arr": "11:30", "price": 98000 }
+      ] }
+    ]
+  },
+  "인천-세부": {
+    "route": "인천(ICN) → 세부(CEB)",
+    "duration": "4시간 40분",
+    "date_prices": [
+      { "date": "2026-08-14", "lowest": 312000, "flights": [
+        { "airline": "세부퍼시픽", "dep": "07:05", "arr": "10:45", "price": 312000 },
+        { "airline": "필리핀항공", "dep": "23:50", "arr": "03:30+1", "price": 358000 }
+      ] },
+      { "date": "2026-08-15", "lowest": 345000, "flights": [
+        { "airline": "진에어", "dep": "20:10", "arr": "23:55", "price": 345000 }
+      ] }
+    ]
+  }
+}
