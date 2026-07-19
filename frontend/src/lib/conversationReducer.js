@@ -226,11 +226,15 @@ function handleStreamDelta(state, text) {
   }
 }
 
-function handleStreamTextEnd(state, payload) {
+function handleStreamTextEnd(state, payload, content) {
   if (!state.streamingId) return state
-  const messages = payload
-    ? state.messages.map((m) => (m.id === state.streamingId ? { ...m, payload: { ...m.payload, ...payload } } : m))
-    : state.messages
+  const messages = state.messages.map((m) => {
+    if (m.id !== state.streamingId) return m
+    const key = m.type === 'itinerary' ? 'markdown' : 'text'
+    const nextPayload = { ...m.payload, ...(payload || {}) }
+    if (content != null) nextPayload[key] = content // 최종 content(출처 각주 등) 반영
+    return { ...m, payload: nextPayload }
+  })
   return { ...state, messages, streamingId: null }
 }
 
@@ -279,7 +283,7 @@ export function conversationReducer(state, action) {
     case 'STREAM_TEXT_DELTA':
       return handleStreamDelta(state, action.text)
     case 'STREAM_TEXT_END':
-      return handleStreamTextEnd(state, action.payload)
+      return handleStreamTextEnd(state, action.payload, action.content)
     case 'STREAM_CARD':
     case 'STREAM_TEXT':
       return applyTurn({ ...dropTrailingStatus(state), streamingId: null }, action.turn)

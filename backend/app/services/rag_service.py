@@ -17,6 +17,12 @@ logger = get_logger(__name__)
 
 COLLECTION = "faq"
 
+# 코사인 거리 임계값 — 이보다 멀면 '관련 없음'으로 보고 결과에서 제외한다.
+# (진단: 관련 질문 0.3~0.4, 무관 질문 0.7+ → 0.55에서 명확히 갈림)
+FAQ_MAX_DISTANCE = 0.55
+# 키워드 폴백(임베딩 미설정 시) 최소 문자 겹침 수
+KEYWORD_MIN_OVERLAP = 2
+
 
 def _embeddings():
     """elice(OpenAI 호환) 임베딩 클라이언트."""
@@ -52,23 +58,32 @@ def seed_faq() -> int:
 
 
 def _keyword_search(query: str, top_k: int) -> list[dict]:
-    """임베딩 미설정 시 폴백: 한글 문자 겹침 기반 러프 검색."""
+    """임베딩 미설정 시 폴백: 한글 문자 겹침 기반 러프 검색(관련도 낮으면 제외)."""
     faqs = load("faq")
+    q = set(query.replace(" ", ""))
 
     def score(faq: dict) -> int:
-        q = set(query.replace(" ", ""))
         text = (faq["question"] + faq["answer"]).replace(" ", "")
         return len(q & set(text))
 
+    # 문자 교집합만으론 느슨하므로 질문 고유문자의 절반 이상 겹칠 때만 관련으로 간주
+    min_overlap = max(KEYWORD_MIN_OVERLAP, len(q) // 2)
     ranked = sorted(faqs, key=lambda f: -score(f))
-    return [{**f, "score": score(f)} for f in ranked[:top_k]]
+    return [{**f, "score": score(f)} for f in ranked[:top_k] if score(f) >= min_overlap]
 
 
-def search_faq(query: str, top_k: int = 3) -> list[dict]:
-    """질문과 가장 관련 있는 FAQ top_k개를 반환한다."""
+def search_faq(query: str, top_k: int = 3, max_distance: float = FAQ_MAX_DISTANCE) -> list[dict]:
+    """질문과 관련 있는 FAQ만 반환한다(유사도 임계값 게이트). 관련 없으면 빈 리스트."""
     if not get_settings().has_embedding:
         logger.info("rag: 임베딩 미설정 → 키워드 폴백 모드")
         return _keyword_search(query, top_k)
 
     results = _store().similarity_search_with_score(query, k=top_k)
-    return [{**doc.metadata, "score": round(float(dist), 3)} for doc, dist in results]
+    # 거리 임계값 초과(무관)는 제외 → 엉뚱한 FAQ 근거 답변 방지
+    relevant = [
+        {**doc.metadata, "score": round(float(dist), 3)}
+        for doc, dist in results
+        if float(dist) <= max_distance
+    ]
+    logger.info("rag: '%s' 검색 %d개 중 관련 %d개(임계 %.2f)", query[:20], len(results), len(relevant), max_distance)
+    return relevant

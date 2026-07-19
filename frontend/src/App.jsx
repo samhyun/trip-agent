@@ -63,7 +63,7 @@ function useConversation() {
               raw({ type: 'STREAM_TEXT_DELTA', text: ev.text })
               break
             case 'text_end':
-              raw({ type: 'STREAM_TEXT_END', payload: ev.payload })
+              raw({ type: 'STREAM_TEXT_END', payload: ev.payload, content: ev.content })
               break
             case 'card':
               raw({ type: 'STREAM_CARD', turn: { type: ev.card_type, content: ev.content, payload: ev.payload } })

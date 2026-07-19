@@ -141,7 +141,8 @@ def stream_agent(messages: list[dict], conversation_id: str):
                 # 스트리밍 노드인데 토큰이 실제로 흐른 경우만 text_end로 마무리.
                 # (mock·빈결과처럼 토큰이 없었으면 완성 content를 카드/텍스트로 폴백 전송)
                 if node in STREAM_TOKEN_NODES and node in started:
-                    yield {"type": "text_end", "node": node, "payload": kwargs.get("payload")}
+                    # 최종 content 동봉(스트림 후 덧붙인 출처·후처리까지 프론트에 반영)
+                    yield {"type": "text_end", "node": node, "content": content, "payload": kwargs.get("payload")}
                 elif card_type != "text":
                     # card_type 을 별도 키로 (이벤트 type="card" 와 충돌 방지)
                     yield {
