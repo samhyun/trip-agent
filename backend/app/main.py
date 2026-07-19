@@ -6,7 +6,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth_router, chat_router
+from app.api.routes import auth_router, chat_router, trips_router
 from app.api.schemas import HealthResponse
 from app.core.config import get_settings
 from app.core.logging import get_logger, setup_logging
@@ -27,6 +27,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(chat_router)
+app.include_router(trips_router)
 
 
 @app.get("/health", response_model=HealthResponse)

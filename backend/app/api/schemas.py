@@ -69,3 +69,30 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserResponse
+
+
+# ----- 내 여행/예약 -----
+
+class BookingResponse(BaseModel):
+    """예약 항목."""
+
+    id: str
+    type: str  # flight / hotel / activity
+    title: str | None = None
+    provider: str
+    status: str
+    price: float | None = None
+
+
+class TripResponse(BaseModel):
+    """저장된 여행(결제 완료). 예약 항목·합계 포함."""
+
+    id: str
+    title: str | None = None
+    destinations: list | None = None
+    travelers: int
+    status: str
+    total: float
+    confirmation_no: str | None = None
+    created_at: str
+    bookings: list[BookingResponse] = Field(default_factory=list)

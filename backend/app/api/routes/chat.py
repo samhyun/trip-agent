@@ -14,6 +14,7 @@ from app.core.logging import get_logger
 from app.db.base import SessionLocal
 from app.db.models import User
 from app.services import conversation_service as convs
+from app.services import trip_service
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -40,6 +41,15 @@ def chat(
         convs.save_message(
             db, conv.id, "assistant", result["answer"], agent=result.get("agent")
         )
+        # 결제 완료 시 여행/예약을 저장(로그인 유저에 연결). 실패해도 채팅 응답은 진행.
+        try:
+            with db.begin_nested():
+                trip_service.record_booking(
+                    db, conv.id, user_id, result.get("turns", []),
+                    "\n".join(m["content"] for m in history),
+                )
+        except Exception:
+            logger.exception("여행 영속화 실패 (무시)")
         db.commit()
 
         return ChatResponse(
