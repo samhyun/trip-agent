@@ -19,14 +19,16 @@
 
 ## 3. 도메인별 최종 선정
 
-| 도메인 | 선택 | 폴백 | 비고 |
-|---|---|---|---|
-| 명소/볼거리 (POI) | **OpenTripMap** | Geoapify → mock | OSM+Wikipedia 기반, 전세계+한국 |
-| 국내 관광·숙박·축제 | **TourAPI** (한국관광공사) | mock | 국내 실데이터 방대 |
-| 해외 항공 검색·예약 | **Duffel** | mock | 예약 플로우 우수, 데이터는 mock 병행 보완 |
-| 해외 호텔 검색·예약 | **LiteAPI** (Nuitée) | mock | 실호텔 3M+, 에이전트용 설계 |
-| 날씨 (선택) | OpenWeatherMap | mock | nice-to-have |
-| 결제 | **더미(mock)** | — | 통일된 결제 UX |
+| 도메인 | 선택 | 상태 | 폴백 | 비고 |
+|---|---|---|---|---|
+| 해외 명소 (POI) | **Geoapify** | ✅ 연동 | mock | OpenTripMap 인증 불안정 → 대체. OSM 기반, 무료 3k/day·카드X |
+| 국내 관광·숙박 | **TourAPI** (한국관광공사) | ✅ 연동 | mock | 국내 실데이터 방대 |
+| 해외 항공 검색 | **Duffel** | ✅ 연동 | mock | 실항공사 혼재(China Eastern 등), USD→KRW 환산 |
+| 해외 호텔 검색 | **LiteAPI** (Nuitée) | ✅ 연동 | mock | 실호텔+실요금, 에이전트용 설계 |
+| 날씨 (선택) | OpenWeatherMap | 키 검증 | mock | nice-to-have, provider 미구현 |
+| 결제 | **더미(mock)** | — | — | 통일된 결제 UX |
+
+> **명소 provider 변경**: OpenTripMap(`opentripmap.io`/`dev.opentripmap.org`)은 가입·키 발급이 불안정해 **Geoapify로 교체**. provider 추상화 덕에 `registry`의 `ATTRACTIONS` 목록만 수정.
 
 ## 4. 후보 API 상세 조사
 
@@ -39,11 +41,29 @@
 | OpenStreetMap Overpass/Nominatim | 완전 무료, 키조차 불필요 | 러프하지만 강력 | 보조 |
 | Google Places (New) | **카드 필수**, SKU별 무료한도(2025.3~) | 데이터 최상(사진·리뷰·평점) | ❌ 카드 마찰 |
 
-### 4.2 국내 관광
+### 4.2 국내 관광 — ✅ 연동 완료 (2026-07-19)
 
 | API | 무료·카드 | 커버리지 | 판정 |
 |---|---|---|---|
 | **한국관광공사 TourAPI** | 무료(공공데이터포털 인증키), 카드X | 관광지·숙박·행사·이미지 등 15종 약 26만 건, 국문 | ✅ **국내 1순위** |
+
+**연동 상세** (`providers/tour_api.py`)
+
+- 상품: "한국관광공사_국문 관광정보 서비스_GW" · **End Point** `https://apis.data.go.kr/B551011/KorService2`
+- 포맷 `_type=json` · 인증키는 `.env`의 `TOUR_API_KEY`. **Encoding/Decoding 키 모두 허용**
+  (코드가 `%` 포함 시 자동 `unquote` → httpx가 한 번만 인코딩, 이중 인코딩 방지).
+- 사용 오퍼레이션:
+  - `searchKeyword2` — 명소 조회. 도시별 **큐레이션 유명 명소 키워드**(성산일출봉·해운대해수욕장 등)로 검색.
+  - `searchStay2` — 국내 숙박 목록.
+  - (`areaBasedList2` — 큐레이션 없는 도시의 명소 폴백, 제목순.)
+- 반환은 mock(`destinations.json`/`hotels.json`)과 **동일 스키마**로 정규화(id·name·area·tags·desc·gradient, +lat/lng 동선용).
+- **요금·평점 없음** → 숙박 카드의 가격·평점은 contentid 기반 결정적 데모값 부여.
+
+**⚠️ TourAPI 특성 메모** (연동 중 발견)
+
+- `searchKeyword2`에 `areaCode`/`contentTypeId`를 **파라미터로 같이 주면** 정확한 명소명("해운대해수욕장" 등)이 0건으로 나온다 → 필터는 빼고 키워드만 주고, **콘텐츠 타입은 응답의 `contenttypeid`로 클라이언트에서 필터**(음식점·쇼핑 제외).
+- 명소 제목에 공백/부가어가 붙는다("해운대 해수욕장", "부산 감천문화마을") → 공백 무시 + "관광 타입 우선 · 키워드에 가장 근접(군더더기 최소)" 규칙으로 본 명소 선택.
+- `totalCount=0`이면 `items`가 빈 문자열 → dict 아닐 때 None 처리.
 
 ### 4.3 해외 항공 (검색+예약)
 
@@ -82,20 +102,24 @@
 - 항공은 Duffel의 예약 플로우가 최고지만 데이터가 가짜인 점이 유일한 약점 → 아래 보완책.
 - Amadeus를 중간 단계로 끼우는 것은 ROI가 낮아 제외 (mock 폴백이 그 자리를 대신함).
 
-## 6. Provider 라우팅 + 폴백 전략
+## 6. Provider 추상화 + 폴백 전략 (구현됨)
 
-핵심 원칙: **툴은 데이터 출처를 모른다.** 서비스 레이어가 목적지·도메인에 따라 provider를 고르고, 실패 시 mock으로 폴백한다.
+핵심 원칙: **호출부는 데이터 출처를 모른다.** `travel_service`는 구체 provider를 직접 알지 않고
+`registry` 파사드만 부른다. provider는 공통 인터페이스(`base.Provider`: `name`·`supports`·`fetch`)를
+따르고, `first_available`이 도메인 목록을 우선순위대로 시도한다. **provider 교체·추가는 registry 목록만 수정.**
 
 ```
-tools (@tool)  →  services (provider 선택)  →  providers  ─┐
-                    │                                       ├→ 성공: 실데이터
-                    │  국내? TourAPI  해외명소? OpenTripMap   │
-                    │  해외항공? Duffel  해외호텔? LiteAPI     │
-                    └  실패/키없음? ─────────────────────────┴→ data/*.json (mock)
+travel_service  →  registry(도메인 파사드)  →  base.first_available(list, city)  ─┐
+   get_attractions   ATTRACTIONS=[TourApi…]     for p in list:                    ├→ 첫 유효결과: 실데이터
+   search_hotels     STAYS=[TourApi…]             if p.supports(city):            │
+                                                     r = p.fetch(city) → 성공/None │
+                     실패/전부 None ───────────────────────────────────────────────┴→ data/*.json (mock)
 ```
 
-- `USE_MOCK_ONLY=true` 로 실 API를 전부 무시하고 mock만 쓰는 모드 지원(시연 대비).
-- 키가 하나도 없어도 mock으로 전체 기능이 동작해야 한다.
+- 각 provider의 `supports(city)`가 국내/해외 등 커버리지를 판단 → 같은 도메인에 국내·해외 provider를 함께 등록 가능.
+- `fetch`는 mock과 동일 스키마를 반환 → 카드 변환·프론트 재사용, 새 provider도 세 멤버만 구현.
+- `USE_MOCK_ONLY=true`로 실 API를 전부 무시하고 mock만 쓰는 모드 지원(시연 대비).
+- 키가 하나도 없어도 mock으로 전체 기능이 동작한다.
 
 ## 7. 항공 데이터 보완책 (Duffel 약점 대응)
 
@@ -113,6 +137,8 @@ Duffel 테스트는 실제 항공사가 아니라 가상 항공사(Duffel Airway
 | OpenTripMap | https://dev.opentripmap.org/product | ❌ |
 | Geoapify | https://www.geoapify.com/places-api/ | ❌ |
 | TourAPI | https://www.data.go.kr/data/15101578/openapi.do | ❌ |
+
+> **주의**: OpenTripMap 개발자 포털은 `dev.opentripmap.org`(키 발급·문서). `opentripmap.io`는 별개(구 소개 페이지)로 키 발급 경로가 아니다.
 | Duffel | https://app.duffel.com/join | ❌ |
 | LiteAPI | https://liteapi.travel/ | ❌ |
 | OpenWeatherMap | https://openweathermap.org/api | ❌ |

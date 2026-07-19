@@ -56,7 +56,8 @@ class Settings(BaseSettings):
 
     # ----- 여행 데이터 API (선택, 없으면 mock 폴백) -----
     tour_api_key: str = ""  # 한국관광공사 TourAPI (국내 관광·숙박)
-    opentripmap_api_key: str = ""  # OpenTripMap (해외 명소)
+    geoapify_api_key: str = ""  # Geoapify Places (해외 명소)
+    opentripmap_api_key: str = ""  # OpenTripMap (해외 명소, 미사용 — Geoapify로 대체)
     duffel_api_key: str = ""  # Duffel (해외 항공)
     liteapi_api_key: str = ""  # LiteAPI (해외 호텔)
     openweather_api_key: str = ""  # OpenWeatherMap (날씨, 선택)
@@ -109,6 +110,10 @@ class Settings(BaseSettings):
     @property
     def has_tour_api(self) -> bool:
         return bool(self.tour_api_key)
+
+    @property
+    def has_geoapify(self) -> bool:
+        return bool(self.geoapify_api_key)
 
     @property
     def has_opentripmap(self) -> bool:

@@ -8,6 +8,7 @@ import re
 from datetime import datetime
 
 from app.core.config import get_settings
+from app.providers import registry
 from app.services.data_loader import load
 
 
@@ -25,7 +26,11 @@ def get_destination(city: str) -> dict | None:
 
 
 def get_attractions(city: str) -> list[dict]:
-    """도시의 명소 목록."""
+    """도시의 명소 목록. provider(국내 TourAPI 등) 우선, 실패/빈결과 시 mock 폴백."""
+    if not mock_only():
+        live = registry.attractions(city)
+        if live:
+            return live
     dest = get_destination(city)
     return dest["attractions"] if dest else []
 
@@ -33,7 +38,12 @@ def get_attractions(city: str) -> list[dict]:
 # ----- 항공 -----
 
 def search_flights(query_or_city: str) -> dict | None:
-    """도시명이 포함된 노선의 날짜별 가격을 반환."""
+    """도시행 날짜별 항공권. 해외는 provider(Duffel) 우선, 국내/실패 시 mock 폴백."""
+    if not mock_only():
+        for city in find_cities(query_or_city):
+            live = registry.flights(city)
+            if live:
+                return live
     flights = load("flights")
     for route_key, info in flights.items():
         cities = route_key.split("-")
@@ -45,8 +55,12 @@ def search_flights(query_or_city: str) -> dict | None:
 # ----- 숙소 -----
 
 def search_hotels(city: str, area: str | None = None) -> list[dict]:
-    """도시(+지역 필터)의 숙소 목록."""
-    hotels = load("hotels").get(city, [])
+    """도시(+지역 필터)의 숙소 목록. provider(국내 TourAPI 등) 우선, 실패/빈결과 시 mock 폴백."""
+    hotels = None
+    if not mock_only():
+        hotels = registry.stays(city)
+    if not hotels:
+        hotels = load("hotels").get(city, [])
     if area:
         hotels = [h for h in hotels if area in h["area"]]
     return hotels

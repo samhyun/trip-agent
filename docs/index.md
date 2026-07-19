@@ -18,18 +18,21 @@ LangGraph supervisor 멀티에이전트 구조.
 
 | 항목 | 결정 |
 |---|---|
-| 아키텍처 | LangGraph supervisor 멀티에이전트 (coordinator·planner·supervisor + 워커 4종) |
-| LLM | OpenAI (gpt-4o-mini 기본, env 교체 가능) |
-| UI | Vite + React 챗 UI + FastAPI |
-| 데이터 (하이브리드) | 명소=OpenTripMap · 국내=TourAPI · 해외항공=Duffel · 해외호텔=LiteAPI · 전구간 mock 폴백 |
+| 아키텍처 | LangGraph supervisor 멀티에이전트 (coordinator·planner·supervisor + 워커 4종 + faq) |
+| LLM | elice AI Cloud 티어별 (reasoning·standard·fast) · OpenAI 폴백 |
+| UI | Vite + React 챗 UI + FastAPI (리치카드 완전 연동) |
+| 데이터 (전부 연동) | 국내 명소·숙박=**TourAPI** · 해외 명소=**Geoapify** · 해외 항공=**Duffel** · 해외 호텔=**LiteAPI** · 전구간 mock 폴백 |
+| provider 추상화 | `base.Provider` + `registry` 파사드 — 교체 시 registry만 수정 |
+| RAG | FAQ 임베딩(text-embedding-3-small) + Postgres·pgvector 유사도 검색 |
 | 예약·결제 | 더미(mock) 처리 + 확정서 발급 |
 
 ## 개발 상태
 
 - [x] 데이터 소스 조사·선정
 - [x] 아키텍처·디렉토리 설계
-- [ ] 프로젝트 골격 스캐폴딩 ← *진행 중*
-- [ ] 그래프·노드 구현 (mock)
-- [ ] 프론트엔드 챗 UI
-- [ ] 실 provider 연동
-- [ ] 더미 결제·데모 정리
+- [x] 프로젝트 골격 스캐폴딩
+- [x] 그래프·노드 구현 (coordinator·planner·supervisor + 워커 4종 + faq)
+- [x] 프론트엔드 챗 UI (리치카드 · 백엔드 완전 연동)
+- [x] DB(Postgres+pgvector) · RAG FAQ · Alembic 마이그레이션
+- [x] 실 provider 연동 — 국내 TourAPI + 해외 Geoapify·LiteAPI·Duffel (registry 추상화)
+- [ ] sLLM 파인튜닝(의도분류, 선택) · 발표·데모 정리
