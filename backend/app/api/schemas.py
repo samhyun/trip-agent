@@ -36,3 +36,36 @@ class HealthResponse(BaseModel):
     """헬스 체크 응답."""
 
     status: str = "ok"
+
+
+# ----- 인증 -----
+
+class RegisterRequest(BaseModel):
+    """회원가입 요청."""
+
+    email: str = Field(..., min_length=3, max_length=255, description="이메일")
+    password: str = Field(..., min_length=6, max_length=128, description="비밀번호(6자 이상)")
+    name: str = Field(..., min_length=1, max_length=80, description="이름")
+
+
+class LoginRequest(BaseModel):
+    """로그인 요청."""
+
+    email: str = Field(..., min_length=3, max_length=255)
+    password: str = Field(..., min_length=1, max_length=128)
+
+
+class UserResponse(BaseModel):
+    """유저 공개 정보."""
+
+    id: str
+    email: str
+    name: str
+
+
+class TokenResponse(BaseModel):
+    """로그인/회원가입 성공 응답 (액세스 토큰 + 유저)."""
+
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse

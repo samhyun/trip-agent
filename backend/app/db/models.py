@@ -35,17 +35,37 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 
+class User(Base):
+    """회원 계정. 대화·여행·예약이 로그인 사용자에 연결된다(비로그인은 user_id=NULL)."""
+
+    __tablename__ = "users"
+    __table_args__ = (UniqueConstraint("email", name="uq_users_email"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String(255), index=True)
+    hashed_password: Mapped[str] = mapped_column(String(255))
+    name: Mapped[str] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    conversations: Mapped[list["Conversation"]] = relationship(back_populates="user")
+    trips: Mapped[list["Trip"]] = relationship(back_populates="user")
+
+
 class Conversation(Base):
     """대화 세션."""
 
     __tablename__ = "conversations"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+    user: Mapped["User | None"] = relationship(back_populates="conversations")
     messages: Mapped[list["Message"]] = relationship(
         back_populates="conversation", cascade="all, delete-orphan"
     )
@@ -97,6 +117,9 @@ class Trip(Base):
     conversation_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("conversations.id", ondelete="CASCADE"), index=True
     )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
     title: Mapped[str | None] = mapped_column(String(120))
     destinations: Mapped[list | None] = mapped_column(JSONB)  # ["제주"] / ["세부","보홀"]
     start_date: Mapped[date | None] = mapped_column(Date)
@@ -108,6 +131,7 @@ class Trip(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+    user: Mapped["User | None"] = relationship(back_populates="trips")
     conversation: Mapped["Conversation"] = relationship(back_populates="trips")
     bookings: Mapped[list["Booking"]] = relationship(
         back_populates="trip", cascade="all, delete-orphan"
@@ -133,6 +157,9 @@ class Booking(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     trip_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("trips.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
     type: Mapped[str] = mapped_column(String(20))  # flight / hotel / activity
     provider: Mapped[str] = mapped_column(String(40), default="mock")  # duffel/liteapi/tourapi/mock
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending/confirmed/cancelled
@@ -160,6 +187,9 @@ class Payment(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     trip_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("trips.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
     booking_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("bookings.id", ondelete="SET NULL")
     )

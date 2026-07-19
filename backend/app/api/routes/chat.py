@@ -5,12 +5,14 @@
 동기 라우트라 FastAPI가 threadpool에서 실행 → 이벤트 루프를 막지 않는다.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.agents.graph import run_agent
+from app.api.deps import get_current_user_optional
 from app.api.schemas import ChatRequest, ChatResponse
 from app.core.logging import get_logger
 from app.db.base import SessionLocal
+from app.db.models import User
 from app.services import conversation_service as convs
 
 logger = get_logger(__name__)
@@ -18,12 +20,16 @@ router = APIRouter()
 
 
 @router.post("/chat", response_model=ChatResponse)
-def chat(request: ChatRequest) -> ChatResponse:
-    """사용자 메시지 → 에이전트 응답 (히스토리 DB 유지)."""
+def chat(
+    request: ChatRequest,
+    current_user: User | None = Depends(get_current_user_optional),
+) -> ChatResponse:
+    """사용자 메시지 → 에이전트 응답 (히스토리 DB 유지). 로그인 시 대화가 유저에 연결됨."""
     db = SessionLocal()
+    user_id = current_user.id if current_user else None
     try:
-        conv = convs.get_or_create_conversation(db, request.conversation_id)
-        logger.info("chat [conv=%s] 입력 %d자", conv.id, len(request.message))
+        conv = convs.get_or_create_conversation(db, request.conversation_id, user_id)
+        logger.info("chat [conv=%s user=%s] 입력 %d자", conv.id, user_id, len(request.message))
 
         history = convs.load_history(db, conv.id)
         history.append({"role": "user", "content": request.message})

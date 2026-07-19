@@ -6,7 +6,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import chat_router
+from app.api.routes import auth_router, chat_router
 from app.api.schemas import HealthResponse
 from app.core.config import get_settings
 from app.core.logging import get_logger, setup_logging
@@ -25,6 +25,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
 app.include_router(chat_router)
 
 
@@ -33,6 +34,9 @@ async def health() -> HealthResponse:
     """헬스 체크."""
     return HealthResponse()
 
+
+if settings.jwt_secret == "dev-secret-change-me":
+    logger.warning("JWT_SECRET이 기본 개발키입니다. 운영 배포 시 .env에서 반드시 교체하세요.")
 
 logger.info(
     "Trip Agent 시작 (모델=%s, OpenAI키=%s, mock전용=%s)",

@@ -62,6 +62,11 @@ class Settings(BaseSettings):
     liteapi_api_key: str = ""  # LiteAPI (해외 호텔)
     openweather_api_key: str = ""  # OpenWeatherMap (날씨, 선택)
 
+    # ----- 인증 (JWT) -----
+    jwt_secret: str = "dev-secret-change-me"  # 운영에선 .env로 교체 필수
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 60 * 24 * 7  # 액세스 토큰 유효기간 (7일)
+
     # ----- 앱 설정 -----
     use_mock_only: bool = False
     log_level: str = "INFO"
