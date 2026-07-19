@@ -25,3 +25,4 @@ class State(MessagesState):
     trip: dict
     full_plan: str
     visited: list
+    plan: list  # planner가 정한 실행 워커 순서 (선택적 라우팅)

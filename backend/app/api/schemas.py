@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 class ChatRequest(BaseModel):
     """사용자 채팅 요청."""
 
-    message: str = Field(..., description="사용자 입력 메시지")
+    message: str = Field(..., min_length=1, max_length=2000, description="사용자 입력 메시지")
     conversation_id: str | None = Field(
         default=None, description="세션 유지용 대화 ID (없으면 새 대화)"
     )

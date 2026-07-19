@@ -15,12 +15,13 @@ logger = get_logger(__name__)
 
 
 def supervisor_node(state: State) -> Command:
-    """아직 방문하지 않은 다음 워커로 라우팅. 모두 끝나면 종료."""
+    """planner가 정한 계획(plan)대로, 아직 방문하지 않은 다음 워커로 라우팅."""
+    plan = state.get("plan") or list(TEAM_MEMBERS)
     visited = state.get("visited", [])
-    for worker in TEAM_MEMBERS:
+    for worker in plan:
         if worker not in visited:
-            logger.info("supervisor → %s", worker)
+            logger.info("supervisor → %s (계획=%s)", worker, plan)
             return Command(goto=worker, update={"next": worker})
 
-    logger.info("supervisor: 모든 워커 완료 → FINISH")
+    logger.info("supervisor: 계획 완료 → FINISH")
     return Command(goto=END, update={"next": "FINISH"})

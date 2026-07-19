@@ -45,20 +45,23 @@ def build_graph():
 _graph = build_graph()
 
 
-def run_agent(user_input: str, conversation_id: str) -> dict:
-    """사용자 입력을 그래프에 넣고 최종 응답을 뽑아낸다.
+def run_agent(messages: list[dict], conversation_id: str) -> dict:
+    """대화 히스토리를 그래프에 넣고 최종 응답을 뽑아낸다.
 
-    Returns: {"answer": str, "agent": str | None}
+    Args:
+        messages: [{"role": "user"|"assistant", "content": str}, ...] 형태의 히스토리
+    Returns: {"answer": str, "agent": str | None, "turns": list}
     """
-    logger.info("run_agent [conv=%s]", conversation_id)
+    logger.info("run_agent [conv=%s] 히스토리 %d턴", conversation_id, len(messages))
+    input_len = len(messages)
     result = _graph.invoke(
-        {"messages": [{"role": "user", "content": user_input}]},
+        {"messages": messages},
         {"recursion_limit": 60},
     )
 
-    # 각 노드(에이전트) 발화를 순서대로 수집 (사용자 입력 제외)
+    # 이번 실행에서 새로 생성된 발화만 수집 (이전 턴 assistant 중복 방지)
     turns = []
-    for msg in result.get("messages", []):
+    for msg in result.get("messages", [])[input_len:]:
         if getattr(msg, "type", None) == "human":
             continue
         content = getattr(msg, "content", "")
