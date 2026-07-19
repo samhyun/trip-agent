@@ -101,6 +101,7 @@ export function createInitialState() {
   return {
     stage: 'welcome', // welcome → active → api:done
     loading: false,
+    streamingId: null, // 현재 토큰 스트리밍 중인 메시지 id
     messages: [
       bot('text', {
         text: '안녕하세요! 어디로 떠나고 싶으세요? 목적지와 일정을 알려주시면 명소부터 항공·숙소·예약까지 여기서 바로 도와드려요. ✈️',
@@ -147,56 +148,94 @@ function handleUserMessage(state, text) {
 // 카드가 스스로 본문 텍스트를 렌더하는 타입 (별도 텍스트 버블 생략)
 const CARD_SELF_TEXT = new Set(['itinerary'])
 
-// 결제 확정 응답에서는 플래너가 계획을 다시 세워 선택 카드를 재방출한다(백엔드 무상태).
-// 확정 턴이 있으면 그 카드들은 중복이라 걸러내고 텍스트 + 확정서만 렌더한다.
-const REPLAN_CARDS = new Set(['destination_carousel', 'itinerary', 'flight_results', 'hotel_results'])
+// 결제 확정 시, 이번 턴(마지막 사용자 발화 이후)에 재방출된 재플랜 결과를 통째로 걷어내는 기준.
+function lastUserIndex(messages) {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'user') return i
+  }
+  return -1
+}
 
-function handleAgentReply(state, turns) {
-  let s = { ...dropTrailingStatus(state), loading: false }
-  const trip = { ...s.trip }
-  const msgs = []
-  const closing = turns.some((t) => t.type === 'confirmation')
+// 턴(카드/텍스트) 하나를 상태에 반영 (비스트리밍·스트리밍 카드 공용)
+function applyTurn(state, turn) {
+  const type = turn.type || 'text'
+  const content = (turn.content || '').trim()
+  const trip = { ...state.trip }
 
-  for (const t of turns) {
-    const type = t.type || 'text'
-    const content = (t.content || '').trim()
-
-    if (closing && REPLAN_CARDS.has(type)) continue
-
-    if (type === 'text' || !t.payload) {
-      if (content) msgs.push(bot('text', { text: content }))
-      continue
-    }
-
-    if (!CARD_SELF_TEXT.has(type) && content) {
-      msgs.push(bot('text', { text: content }))
-    }
-
-    if (type === 'destination_carousel') {
-      if (!trip.destination && t.payload.city) trip.destination = t.payload.city
-      msgs.push(bot('destination_carousel', t.payload))
-    } else if (type === 'itinerary') {
-      msgs.push(bot('itinerary', { ...t.payload, markdown: t.payload.markdown || content }))
-    } else if (type === 'hotel_results') {
-      if (!trip.destination && t.payload.cityLabel) trip.destination = t.payload.cityLabel
-      msgs.push(bot('hotel_results', t.payload))
-    } else if (type === 'confirmation') {
-      const total = trip.total || t.payload.total || 0
-      const dateLabel = trip.dateLabel || t.payload.dateLabel || ''
-      trip.confirmation = { code: t.payload.code, total }
-      trip.total = total
-      msgs.push(bot('confirmation', { ...t.payload, total, dateLabel }))
-    } else {
-      // flight_results 등 나머지 카드는 payload 그대로 렌더
-      msgs.push(bot(type, t.payload))
-    }
+  if (type === 'text' || !turn.payload) {
+    return content ? append({ ...state, trip }, [bot('text', { text: content })]) : { ...state, trip }
   }
 
-  return { ...append(s, msgs), trip, stage: closing ? 'api:done' : s.stage }
+  const msgs = []
+  if (!CARD_SELF_TEXT.has(type) && content && type !== 'confirmation') {
+    msgs.push(bot('text', { text: content }))
+  }
+
+  if (type === 'destination_carousel') {
+    if (!trip.destination && turn.payload.city) trip.destination = turn.payload.city
+    msgs.push(bot('destination_carousel', turn.payload))
+  } else if (type === 'itinerary') {
+    msgs.push(bot('itinerary', { ...turn.payload, markdown: turn.payload.markdown || content }))
+  } else if (type === 'hotel_results') {
+    if (!trip.destination && turn.payload.cityLabel) trip.destination = turn.payload.cityLabel
+    msgs.push(bot('hotel_results', turn.payload))
+  } else if (type === 'confirmation') {
+    const total = trip.total || turn.payload.total || 0
+    const dateLabel = trip.dateLabel || turn.payload.dateLabel || ''
+    trip.confirmation = { code: turn.payload.code, total }
+    trip.total = total
+    // 이번 턴에 재방출된 재플랜 카드·캡션(고아 텍스트 포함)을 통째로 제거하고 확정서만 남긴다
+    const kept = state.messages.slice(0, lastUserIndex(state.messages) + 1)
+    return {
+      ...state,
+      messages: [...kept, bot('confirmation', { ...turn.payload, total, dateLabel })],
+      trip,
+      stage: 'api:done',
+    }
+  } else {
+    msgs.push(bot(type, turn.payload))
+  }
+  return append({ ...state, trip }, msgs)
+}
+
+// 비스트리밍 응답(폴백): turns 전체를 순서대로 반영
+function handleAgentReply(state, turns) {
+  let s = { ...dropTrailingStatus(state), loading: false }
+  for (const t of turns) s = applyTurn(s, t)
+  return s
+}
+
+// ---------- 스트리밍 (SSE) ----------
+
+function handleStreamTextStart(state, cardType) {
+  const s = dropTrailingStatus(state)
+  const isItin = cardType === 'itinerary'
+  const msg = bot(isItin ? 'itinerary' : 'text', isItin ? { markdown: '' } : { text: '' })
+  return { ...s, messages: [...s.messages, msg], streamingId: msg.id, loading: true }
+}
+
+function handleStreamDelta(state, text) {
+  if (!state.streamingId) return state
+  return {
+    ...state,
+    messages: state.messages.map((m) => {
+      if (m.id !== state.streamingId) return m
+      const key = m.type === 'itinerary' ? 'markdown' : 'text'
+      return { ...m, payload: { ...m.payload, [key]: (m.payload[key] || '') + text } }
+    }),
+  }
+}
+
+function handleStreamTextEnd(state, payload) {
+  if (!state.streamingId) return state
+  const messages = payload
+    ? state.messages.map((m) => (m.id === state.streamingId ? { ...m, payload: { ...m.payload, ...payload } } : m))
+    : state.messages
+  return { ...state, messages, streamingId: null }
 }
 
 function handleAgentError(state) {
-  const s = { ...dropTrailingStatus(state), loading: false }
+  const s = { ...dropTrailingStatus(state), loading: false, streamingId: null }
   return append(s, [
     bot('text', {
       text: '연결에 문제가 있어요. 백엔드 서버(localhost:8000)가 켜져 있는지 확인하고 잠시 후 다시 시도해 주세요. 🙏',
@@ -235,6 +274,17 @@ export function conversationReducer(state, action) {
       return handleUserMessage(state, action.text)
     case 'AGENT_REPLY':
       return handleAgentReply(state, action.turns || [])
+    case 'STREAM_TEXT_START':
+      return handleStreamTextStart(state, action.cardType)
+    case 'STREAM_TEXT_DELTA':
+      return handleStreamDelta(state, action.text)
+    case 'STREAM_TEXT_END':
+      return handleStreamTextEnd(state, action.payload)
+    case 'STREAM_CARD':
+    case 'STREAM_TEXT':
+      return applyTurn({ ...dropTrailingStatus(state), streamingId: null }, action.turn)
+    case 'STREAM_DONE':
+      return { ...dropTrailingStatus(state), loading: false, streamingId: null }
     case 'AGENT_ERROR':
       return handleAgentError(state)
     case 'DISABLE_QUICK_REPLY':

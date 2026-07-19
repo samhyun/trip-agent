@@ -149,12 +149,13 @@ def get_settings() -> Settings:
 
 
 # 에이전트 역할 → 모델 티어 매핑.
+# planner는 워커 이름만 고르는 단순 분류라 reasoning(느림) 불필요 → fast로 지연 절감.
 AGENT_LLM_MAP: dict[str, str] = {
     "coordinator": "standard",
-    "planner": "reasoning",
+    "planner": "fast",
     "supervisor": "fast",
     "destination": "standard",
-    "itinerary": "reasoning",
+    "itinerary": "reasoning",  # 일정 서술은 품질 중요 → reasoning 유지(스트리밍 대상)
     "booking": "standard",
     "payment": "fast",
 }

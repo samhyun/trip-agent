@@ -24,3 +24,48 @@ export async function sendChat({ message, conversationId }) {
   }
   return res.json()
 }
+
+/**
+ * 스트리밍 채팅 (SSE). 텍스트는 토큰 단위, 카드는 완성 이벤트로 onEvent 에 전달된다.
+ * @param {{ message: string, conversationId?: string|null, onEvent: (ev:object)=>void, signal?: AbortSignal }} params
+ */
+export async function streamChat({ message, conversationId, onEvent, signal }) {
+  const headers = { 'Content-Type': 'application/json' }
+  const token = localStorage.getItem(TOKEN_KEY)
+  if (token) headers.Authorization = `Bearer ${token}`
+  const res = await fetch(`${BASE_URL}/chat/stream`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ message, conversation_id: conversationId ?? null }),
+    signal,
+  })
+  if (!res.ok || !res.body) throw new Error(`chat 스트림 실패: ${res.status}`)
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const chunks = buffer.split('\n\n')
+      buffer = chunks.pop() ?? '' // 마지막 미완성 조각 보관
+      for (const chunk of chunks) {
+        const line = chunk.trim()
+        if (!line.startsWith('data:')) continue
+        try {
+          onEvent(JSON.parse(line.slice(5).trim()))
+        } catch {
+          // 파싱 실패한 조각은 무시
+        }
+      }
+    }
+  } finally {
+    try {
+      reader.releaseLock()
+    } catch {
+      // 이미 해제됨
+    }
+  }
+}

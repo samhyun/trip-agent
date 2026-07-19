@@ -11,7 +11,7 @@ import {
   findCarouselItem,
   findQuickReplyOption,
 } from './lib/conversationReducer'
-import { sendChat } from './lib/api'
+import { streamChat } from './lib/api'
 
 function useTheme() {
   const [theme, setTheme] = useState(() => {
@@ -37,31 +37,61 @@ function useConversation() {
   stateRef.current = state
   const convId = useRef(null)
   const busy = useRef(false)
+  const abortRef = useRef(null)
 
   const send = useCallback(async (text) => {
     const trimmed = (text || '').trim()
     if (!trimmed || busy.current) return
     busy.current = true
     raw({ type: 'USER_MESSAGE', text: trimmed })
+    const controller = new AbortController()
+    abortRef.current = controller
     try {
-      const data = await sendChat({ message: trimmed, conversationId: convId.current })
-      convId.current = data.conversation_id || convId.current
-      // turns가 비어 있으면 answer 를 텍스트 메시지로 폴백 렌더 (되묻기 등이 사라지지 않도록)
-      const turns =
-        data.turns && data.turns.length
-          ? data.turns
-          : data.answer
-            ? [{ agent: null, content: data.answer, type: 'text', payload: null }]
-            : []
-      raw({ type: 'AGENT_REPLY', turns })
+      await streamChat({
+        message: trimmed,
+        conversationId: convId.current,
+        signal: controller.signal,
+        onEvent: (ev) => {
+          switch (ev.type) {
+            case 'meta':
+              convId.current = ev.conversation_id || convId.current
+              break
+            case 'text_start':
+              raw({ type: 'STREAM_TEXT_START', cardType: ev.card_type })
+              break
+            case 'text_delta':
+              raw({ type: 'STREAM_TEXT_DELTA', text: ev.text })
+              break
+            case 'text_end':
+              raw({ type: 'STREAM_TEXT_END', payload: ev.payload })
+              break
+            case 'card':
+              raw({ type: 'STREAM_CARD', turn: { type: ev.card_type, content: ev.content, payload: ev.payload } })
+              break
+            case 'text':
+              raw({ type: 'STREAM_TEXT', turn: { type: 'text', content: ev.content, payload: null } })
+              break
+            case 'done':
+              raw({ type: 'STREAM_DONE' })
+              break
+            case 'error':
+              raw({ type: 'AGENT_ERROR' })
+              break
+            default:
+              break
+          }
+        },
+      })
     } catch (err) {
-      raw({ type: 'AGENT_ERROR' })
+      if (err?.name !== 'AbortError') raw({ type: 'AGENT_ERROR' }) // 의도적 취소는 에러 아님
     } finally {
       busy.current = false
+      abortRef.current = null
     }
   }, [])
 
   const reset = useCallback(() => {
+    abortRef.current?.abort() // 진행 중 스트림 취소
     convId.current = null
     raw({ type: 'RESET' })
   }, [])
