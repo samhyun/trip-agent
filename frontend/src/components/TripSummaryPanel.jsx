@@ -1,3 +1,4 @@
+import { useAuth } from '../context/AuthContext'
 import { won } from '../lib/format'
 
 function statusInfo(stage, trip) {
@@ -8,7 +9,41 @@ function statusInfo(stage, trip) {
   return { label: '예약 대기', done: false }
 }
 
-export default function TripSummaryPanel({ trip, stage, onProceed }) {
+// 게스트 CTA / 로그인 환영 (패널 상단)
+function AuthPanelBlock({ user, onOpenAuth, onOpenBookings }) {
+  if (!user) {
+    return (
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, padding: 16, boxShadow: 'var(--shadow-sm)', display: 'flex', flexDirection: 'column', gap: 11, textAlign: 'center' }}>
+        <span style={{ fontSize: 26 }}>🧳</span>
+        <span style={{ fontSize: 13.5, fontWeight: 800, lineHeight: 1.45 }}>로그인하면 예약과<br />여행이 저장돼요</span>
+        <span style={{ fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.5 }}>여러 기기에서 이어보고, 예약 내역을 한곳에서 관리하세요.</span>
+        <button type="button" onClick={() => onOpenAuth('login')} style={{ marginTop: 3, width: '100%', background: 'var(--primary)', color: 'var(--primary-ink)', border: 'none', fontFamily: 'inherit', fontSize: 13.5, fontWeight: 800, padding: 11, borderRadius: 11, cursor: 'pointer' }}>로그인</button>
+        <button type="button" onClick={() => onOpenAuth('signup')} style={{ width: '100%', background: 'none', color: 'var(--primary)', border: '1px solid var(--border)', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, padding: 10, borderRadius: 11, cursor: 'pointer' }}>회원가입</button>
+      </div>
+    )
+  }
+  const name = (user.name || '').trim() || user.email || '사용자'
+  const initials = (name.charAt(0) || '?').toUpperCase()
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+      <div style={{ background: 'linear-gradient(160deg, var(--primary-soft), var(--surface))', border: '1px solid var(--border)', borderRadius: 16, padding: 15, boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span style={{ width: 42, height: 42, flex: 'none', borderRadius: '50%', background: 'var(--primary)', color: 'var(--primary-ink)', display: 'grid', placeItems: 'center', fontSize: 18, fontWeight: 800 }}>{initials}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: 14, fontWeight: 800 }}>{name}님, 안녕하세요 👋</span>
+          <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>예약과 여행이 자동 저장돼요</span>
+        </div>
+      </div>
+      <button type="button" onClick={onOpenBookings} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 13, padding: '13px 14px', fontFamily: 'inherit', cursor: 'pointer', color: 'var(--text)', boxShadow: 'var(--shadow-sm)' }}>
+        <span style={{ fontSize: 17 }}>🧳</span>
+        <span style={{ fontSize: 13.5, fontWeight: 700 }}>내 예약 내역</span>
+        <span style={{ marginLeft: 'auto', color: 'var(--faint)' }}>›</span>
+      </button>
+    </div>
+  )
+}
+
+export default function TripSummaryPanel({ trip, stage, onProceed, onOpenAuth, onOpenBookings }) {
+  const { user } = useAuth()
   const status = statusInfo(stage, trip)
   const empty = trip.destination === null
   const isDone = stage.endsWith(':done')
@@ -23,11 +58,15 @@ export default function TripSummaryPanel({ trip, stage, onProceed }) {
       </div>
 
       <div className="trip-panel__body scroll-thin">
+        <AuthPanelBlock user={user} onOpenAuth={onOpenAuth} onOpenBookings={onOpenBookings} />
+
         {empty ? (
-          <div className="trip-panel__empty">✈️
-            <br />
-            여행을 시작해 보세요
-          </div>
+          user ? (
+            <div className="trip-panel__empty">✈️
+              <br />
+              여행을 시작해 보세요
+            </div>
+          ) : null
         ) : (
           <>
             <div className="trip-panel__facts">

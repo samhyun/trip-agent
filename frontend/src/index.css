@@ -1583,3 +1583,39 @@ a:hover {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* ==================== Auth (로그인/회원가입) ==================== */
+@keyframes ta-spin { to { transform: rotate(360deg); } }
+@keyframes ta-dim { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ta-fadeup {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.auth-overlay {
+  position: fixed; inset: 0; background: oklch(0.18 0.02 240 / 0.5);
+  display: grid; place-items: center; padding: 28px; z-index: 100;
+  animation: ta-dim 0.2s ease both;
+}
+.auth-dialog {
+  width: 400px; max-width: 100%; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 20px; box-shadow: var(--shadow);
+  overflow: hidden; animation: ta-fadeup 0.26s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+.auth-input {
+  width: 100%; box-sizing: border-box; padding: 11px 13px; border-radius: 11px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  font-family: inherit; font-size: 14px; outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.auth-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.auth-spinner {
+  width: 15px; height: 15px; border: 2px solid var(--primary-ink);
+  border-right-color: transparent; border-radius: 50%; display: inline-block;
+  animation: ta-spin 0.7s linear infinite;
+}
+.auth-menu-item {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 11px 15px;
+  background: none; border: none; font-family: inherit; font-size: 13px;
+  color: var(--text); cursor: pointer; text-align: left;
+}
+.auth-menu-item:hover { background: var(--panel); }

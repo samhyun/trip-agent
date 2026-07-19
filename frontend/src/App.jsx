@@ -3,6 +3,8 @@ import Header from './components/Header'
 import ChatColumn from './components/ChatColumn'
 import TripSummaryPanel from './components/TripSummaryPanel'
 import MobileSummaryBar from './components/MobileSummaryBar'
+import AuthModal from './components/auth/AuthModal'
+import BookingsView from './components/BookingsView'
 import {
   conversationReducer,
   createInitialState,
@@ -123,10 +125,18 @@ export default function App() {
   const [state, dispatch] = useConversation()
   const [theme, toggleTheme] = useTheme()
   const [mobileSummaryOpen, setMobileSummaryOpen] = useState(false)
+  const [auth, setAuth] = useState({ open: false, tab: 'login' })
+  const [bookingsOpen, setBookingsOpen] = useState(false)
+  const openAuth = (tab = 'login') => setAuth({ open: true, tab })
 
   return (
     <div className="app-shell" data-theme={theme}>
-      <Header theme={theme} onToggleTheme={toggleTheme} />
+      <Header
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        onOpenAuth={openAuth}
+        onOpenBookings={() => setBookingsOpen(true)}
+      />
       <MobileSummaryBar
         trip={state.trip}
         stage={state.stage}
@@ -135,9 +145,22 @@ export default function App() {
         onProceed={() => dispatch({ type: 'PANEL_PROCEED' })}
       />
       <div className="app-main">
-        <ChatColumn state={state} dispatch={dispatch} />
-        <TripSummaryPanel trip={state.trip} stage={state.stage} onProceed={() => dispatch({ type: 'PANEL_PROCEED' })} />
+        {bookingsOpen ? (
+          <div className="chat-column">
+            <BookingsView onClose={() => setBookingsOpen(false)} />
+          </div>
+        ) : (
+          <ChatColumn state={state} dispatch={dispatch} />
+        )}
+        <TripSummaryPanel
+          trip={state.trip}
+          stage={state.stage}
+          onProceed={() => dispatch({ type: 'PANEL_PROCEED' })}
+          onOpenAuth={openAuth}
+          onOpenBookings={() => setBookingsOpen(true)}
+        />
       </div>
+      <AuthModal open={auth.open} initialTab={auth.tab} onClose={() => setAuth((a) => ({ ...a, open: false }))} />
     </div>
   )
 }
