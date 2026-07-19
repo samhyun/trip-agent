@@ -54,12 +54,12 @@ class Settings(BaseSettings):
     # docker-compose 내부에서는 environment의 DATABASE_URL(db:5432)이 우선한다.
     database_url: str = "postgresql+psycopg://tripagent:tripagent@localhost:5433/tripagent"
 
-    # ----- 여행 데이터 API (선택) -----
-    tour_api_key: str = ""
-    amadeus_client_id: str = ""
-    amadeus_client_secret: str = ""
-    amadeus_base_url: str = "https://test.api.amadeus.com"
-    openweather_api_key: str = ""
+    # ----- 여행 데이터 API (선택, 없으면 mock 폴백) -----
+    tour_api_key: str = ""  # 한국관광공사 TourAPI (국내 관광·숙박)
+    opentripmap_api_key: str = ""  # OpenTripMap (해외 명소)
+    duffel_api_key: str = ""  # Duffel (해외 항공)
+    liteapi_api_key: str = ""  # LiteAPI (해외 호텔)
+    openweather_api_key: str = ""  # OpenWeatherMap (날씨, 선택)
 
     # ----- 앱 설정 -----
     use_mock_only: bool = False
@@ -111,8 +111,16 @@ class Settings(BaseSettings):
         return bool(self.tour_api_key)
 
     @property
-    def has_amadeus(self) -> bool:
-        return bool(self.amadeus_client_id and self.amadeus_client_secret)
+    def has_opentripmap(self) -> bool:
+        return bool(self.opentripmap_api_key)
+
+    @property
+    def has_duffel(self) -> bool:
+        return bool(self.duffel_api_key)
+
+    @property
+    def has_liteapi(self) -> bool:
+        return bool(self.liteapi_api_key)
 
     def embedding_config(self) -> tuple[str, str, str]:
         """RAG 임베딩 (base_url, api_key, model)."""

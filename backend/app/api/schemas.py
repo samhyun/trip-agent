@@ -13,10 +13,12 @@ class ChatRequest(BaseModel):
 
 
 class AgentTurn(BaseModel):
-    """대화 흐름 중 한 노드(에이전트)의 발화."""
+    """대화 흐름 중 한 노드(에이전트)의 발화 (프론트 렌더 계약)."""
 
     agent: str | None = Field(default=None, description="노드/에이전트 이름")
-    content: str = Field(..., description="해당 노드의 발화 내용")
+    content: str = Field(..., description="발화 내용(텍스트)")
+    type: str = Field(default="text", description="렌더 카드 타입 (destination_carousel 등)")
+    payload: dict | None = Field(default=None, description="카드 데이터")
 
 
 class ChatResponse(BaseModel):

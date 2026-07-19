@@ -66,8 +66,14 @@ def run_agent(messages: list[dict], conversation_id: str) -> dict:
             continue
         content = getattr(msg, "content", "")
         if isinstance(content, str) and content.strip():
+            kwargs = getattr(msg, "additional_kwargs", None) or {}
             turns.append(
-                {"agent": getattr(msg, "name", None) or getattr(msg, "type", None), "content": content}
+                {
+                    "agent": getattr(msg, "name", None) or getattr(msg, "type", None),
+                    "content": content,
+                    "type": kwargs.get("card_type", "text"),
+                    "payload": kwargs.get("payload"),
+                }
             )
 
     if turns:
