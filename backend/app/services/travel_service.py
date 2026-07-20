@@ -149,33 +149,47 @@ def build_flight_payload(flights: dict) -> dict:
     return {"mode": "byDate", "route": route, "dates": dates, "flightsByDate": flights_by_date}
 
 
-def build_hotel_payload(city: str, hotels: list[dict]) -> dict:
+def build_hotel_payload(city: str, hotels: list[dict], sort: str | None = None) -> dict:
     """hotel_results 카드 페이로드 (프론트 HotelResults 계약).
 
-    {city, cityLabel, banner, regions?, hotels:[{id,name,region,meta,price,rating,gradient}]}
+    sort="price"면 가격 낮은순, 그 외엔 평점 높은순으로 정렬한다.
+    {city, cityLabel, banner, regions?, hotels:[{id,name,region,meta,price,rating,gradient,image}]}
     """
+    def _price(h):
+        p = h.get("price", h.get("price_per_night"))
+        return p if isinstance(p, (int, float)) and p > 0 else float("inf")  # 가격 미확인은 맨 뒤로
+
+    if sort == "price":
+        hotels = sorted(hotels, key=_price)
+        label = "가격 낮은순"
+    else:
+        hotels = sorted(hotels, key=lambda h: -(h.get("rating") or 0))
+        label = "평점 높은순"
+
     areas: list[str] = []
     cards = []
     for i, h in enumerate(hotels):
         area = h.get("area", city)
         if area not in areas:
             areas.append(area)
+        # id·gradient는 정렬 순서와 무관하게 숙소 고유값 기준(선택 상태·렌더 키 안정)
+        stable = sum(ord(c) for c in h.get("name", ""))
         cards.append(
             {
-                "id": h.get("id") or f"{city}-hotel-{i}",
+                "id": h.get("id") or f"{city}-{h.get('name', 'hotel')}",
                 "name": h["name"],
                 "region": area,
                 "meta": " · ".join(h.get("tags", [])),
                 "price": h.get("price", h.get("price_per_night", 0)),
                 "rating": h.get("rating"),
-                "gradient": h.get("gradient", i),
+                "gradient": h.get("gradient", stable % 6),
                 "image": h.get("image"),
             }
         )
     payload = {
         "city": city,
         "cityLabel": city,
-        "banner": f"{city} 숙소 · 평점순",
+        "banner": f"{city} 숙소 · {label}",
         "hotels": cards,
     }
     if len(areas) > 1:

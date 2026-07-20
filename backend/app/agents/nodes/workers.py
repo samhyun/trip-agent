@@ -140,6 +140,7 @@ def booking_node(state: State) -> Command:
             goto="supervisor",
         )
     city = cities[0]
+    sort = (state.get("trip") or {}).get("sort")  # 'price' | 'rating' | None
     flights = ts.search_flights(city)
     hotels = ts.search_hotels(city)
 
@@ -156,13 +157,14 @@ def booking_node(state: State) -> Command:
             )
         )
     if hotels:
+        note = "가격 낮은순으로 정렬했어요." if sort == "price" else "마음에 드는 곳을 예약해 주세요."
         messages.append(
             AIMessage(
-                content=f"{city} 숙소 옵션이에요. 마음에 드는 곳을 예약해 주세요 🏨",
+                content=f"{city} 숙소 옵션이에요. {note} 🏨",
                 name="booking",
                 additional_kwargs={
                     "card_type": "hotel_results",
-                    "payload": ts.build_hotel_payload(city, hotels),
+                    "payload": ts.build_hotel_payload(city, hotels, sort=sort),
                 },
             )
         )
