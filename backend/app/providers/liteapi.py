@@ -6,6 +6,7 @@
 인증: `X-API-Key` 헤더. 요금은 숙박 총액(USD)이라 박수로 나눠 1박가로 환산 후 KRW 변환.
 """
 
+import re
 from datetime import date, timedelta
 
 import httpx
@@ -13,6 +14,12 @@ import httpx
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.providers.intl import INTL_CITIES, supports_intl, to_krw
+
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _strip_html(text) -> str:
+    return _TAG_RE.sub("", text or "").strip()
 
 logger = get_logger(__name__)
 
@@ -148,6 +155,44 @@ def search_stays(city: str, limit: int = 6) -> list[dict] | None:
     logger.info("LiteAPI stays[%s] %d개", city, len(result))
     _CACHE[(city, limit)] = result
     return result
+
+
+def hotel_detail(hotel_id: str) -> dict | None:
+    """해외 호텔 상세 (LiteAPI /data/hotel). 사진·편의시설·주소·체크인아웃·설명."""
+    if not get_settings().has_liteapi:
+        return None
+    try:
+        r = httpx.get(
+            f"{BASE_URL}/data/hotel", headers=_headers(), params={"hotelId": hotel_id}, timeout=TIMEOUT
+        )
+        r.raise_for_status()
+        d = r.json().get("data") or {}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("LiteAPI hotel_detail 실패(%s): %s", hotel_id, exc)
+        return None
+    if not d:
+        return None
+    raw_img = [i.get("url") for i in (d.get("hotelImages") or []) if isinstance(i, dict)]
+    images = list(dict.fromkeys(u for u in raw_img if isinstance(u, str) and u.startswith("https://")))
+    raw_fac = d.get("hotelFacilities") or d.get("facilities") or []
+    facilities = list(dict.fromkeys(f for f in raw_fac if isinstance(f, str)))  # 중복 제거(순서 유지)
+    ci = d.get("checkinCheckoutTimes") or {}
+    detail = {
+        "id": str(hotel_id),
+        "name": d.get("name"),
+        "address": d.get("address"),
+        "images": images[:12],
+        "facilities": facilities[:20],
+        "description": _strip_html(d.get("hotelDescription"))[:600],
+        "checkin": ci.get("checkin_start") or ci.get("checkin"),
+        "checkout": ci.get("checkout"),
+        "stars": d.get("starRating"),
+        "phone": d.get("phone"),
+    }
+    # 의미 있는 상세가 하나도 없으면 None
+    if not (detail["name"] or detail["images"] or detail["description"] or detail["address"]):
+        return None
+    return detail
 
 
 class LiteApiStays:

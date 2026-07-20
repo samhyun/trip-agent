@@ -8,7 +8,7 @@ import re
 from datetime import datetime
 
 from app.core.config import get_settings
-from app.providers import registry
+from app.providers import intl, liteapi, registry, tour_api
 from app.services.data_loader import load
 
 
@@ -71,6 +71,15 @@ def search_hotels(city: str, area: str | None = None) -> list[dict]:
 def search_activities(city: str) -> list[dict]:
     """도시의 액티비티 목록."""
     return load("activities").get(city, [])
+
+
+def get_hotel_detail(city: str, hotel_id: str) -> dict | None:
+    """호텔 상세 (ID 조회). 국내=TourAPI, 해외=LiteAPI. 없으면 None."""
+    if tour_api.supports(city):
+        return tour_api.stay_detail(hotel_id)
+    if intl.supports_intl(city):
+        return liteapi.hotel_detail(hotel_id)
+    return None
 
 
 # ----- 프론트 카드 페이로드 변환 -----

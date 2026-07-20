@@ -25,6 +25,16 @@ export async function sendChat({ message, conversationId }) {
   return res.json()
 }
 
+/** 호텔 상세 조회 (ID 기반). 사진·편의시설·주소·체크인아웃·설명. */
+export async function fetchHotelDetail(id, city, signal) {
+  const res = await fetch(
+    `${BASE_URL}/details/hotel?id=${encodeURIComponent(id)}&city=${encodeURIComponent(city)}`,
+    { signal },
+  )
+  if (!res.ok) throw new Error(`상세 조회 실패: ${res.status}`)
+  return res.json()
+}
+
 /**
  * 스트리밍 채팅 (SSE). 텍스트는 토큰 단위, 카드는 완성 이벤트로 onEvent 에 전달된다.
  * @param {{ message: string, conversationId?: string|null, onEvent: (ev:object)=>void, signal?: AbortSignal }} params

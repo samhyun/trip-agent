@@ -14,6 +14,7 @@
 params로 한 번 인코딩하므로, 이미 인코딩된(Encoding) 키가 들어와도 자동 감지해 unquote 한다.
 """
 
+import re
 from urllib.parse import unquote
 
 import httpx
@@ -124,6 +125,51 @@ def _sigungu(addr1: str | None, fallback: str) -> str:
 def _https(url: str | None) -> str | None:
     """관광공사 이미지가 http로 오면 https로 승격(https 배포 시 mixed-content 차단 방지)."""
     return url.replace("http://", "https://", 1) if url and url.startswith("http://") else url
+
+
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _strip_html(text) -> str:
+    return _TAG_RE.sub("", text or "").strip()
+
+
+def stay_detail(content_id: str) -> dict | None:
+    """국내 숙박 상세 (detailCommon2 + detailIntro2 + detailImage2)."""
+    if not get_settings().has_tour_api:
+        return None
+    common = _call("detailCommon2", contentId=content_id, numOfRows=1)
+    if not common:
+        return None
+    c = common[0]
+    intro_list = _call("detailIntro2", contentId=content_id, contentTypeId=32, numOfRows=1)
+    it = intro_list[0] if intro_list else {}
+    img_list = _call("detailImage2", contentId=content_id, imageYN="Y", numOfRows=12) or []
+
+    images = [_https(c.get("firstimage")), *[_https(x.get("originimgurl")) for x in img_list]]
+    images = list(dict.fromkeys(i for i in images if isinstance(i, str) and i.startswith("https://")))[:12]
+
+    facilities = []
+    for key, label in (("roomcount", "객실 {v}"), ("parkinglodging", "주차 {v}"), ("subfacility", "부대시설: {v}")):
+        v = (it.get(key) or "").strip()
+        if v:
+            facilities.append(label.format(v=v))
+
+    detail = {
+        "id": str(content_id),
+        "name": (c.get("title") or "").strip(),
+        "address": (c.get("addr1") or "").strip(),
+        "images": images,
+        "facilities": facilities,
+        "description": _strip_html(c.get("overview"))[:600],
+        "checkin": (it.get("checkintime") or "").strip() or None,
+        "checkout": (it.get("checkouttime") or "").strip() or None,
+        "stars": None,
+        "phone": (c.get("tel") or "").strip() or None,
+    }
+    if not (detail["name"] or detail["images"] or detail["description"] or detail["address"]):
+        return None
+    return detail
 
 
 def _coords(item: dict) -> dict:

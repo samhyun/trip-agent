@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import { won } from '../../lib/format'
 import CardThumb from './CardThumb'
+import HotelDetailModal from './HotelDetailModal'
 
 export default function HotelResults({ payload, selectedHotel, dispatch }) {
   const { banner, regions, hotels, cityLabel } = payload
+  const city = payload.city || cityLabel
   const locked = Boolean(selectedHotel)
   const [region, setRegion] = useState('전체')
+  const [detailHotel, setDetailHotel] = useState(null)
 
   const visibleHotels = regions && region !== '전체' ? hotels.filter((h) => h.region === region) : hotels
 
@@ -55,10 +58,11 @@ export default function HotelResults({ payload, selectedHotel, dispatch }) {
                 <div className="hotel-card__footer">
                   <span className="hotel-card__price">{won(hotel.price)}</span>
                   <span className="hotel-card__price-unit">/ 박</span>
+                  <button type="button" className="card-detail-btn" style={{ marginLeft: 'auto' }} onClick={() => setDetailHotel(hotel)}>
+                    상세
+                  </button>
                   {isSelected ? (
-                    <span className="flight-card__selected-tag" style={{ marginLeft: 'auto' }}>
-                      ✓ 선택됨
-                    </span>
+                    <span className="flight-card__selected-tag">✓ 선택됨</span>
                   ) : (
                     <button
                       type="button"
@@ -80,6 +84,8 @@ export default function HotelResults({ payload, selectedHotel, dispatch }) {
           </div>
         )}
       </div>
+
+      {detailHotel && <HotelDetailModal hotel={detailHotel} city={city} onClose={() => setDetailHotel(null)} />}
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { won } from '../../lib/format'
+import FlightDetailModal from './FlightDetailModal'
 
 function isSameFlight(selected, candidate, date) {
   if (!selected) return false
@@ -8,7 +9,7 @@ function isSameFlight(selected, candidate, date) {
   return true
 }
 
-function FlightCard({ item, selected, locked, onSelect }) {
+function FlightCard({ item, selected, locked, onSelect, onDetail }) {
   return (
     <div className={`flight-card${selected ? ' flight-card--selected' : ''}${locked && !selected ? ' flight-card--disabled' : ''}`}>
       <div className="flight-card__air">
@@ -23,7 +24,7 @@ function FlightCard({ item, selected, locked, onSelect }) {
         <div className="flight-card__dur">
           <span>{item.dur}</span>
           <span>──✈──</span>
-          <span>직항</span>
+          <span>{item.stops ? `${item.stops}경유` : '직항'}</span>
         </div>
         <div className="flight-card__time">
           <div>{item.arr}</div>
@@ -33,13 +34,16 @@ function FlightCard({ item, selected, locked, onSelect }) {
       <div className="flight-card__price-col">
         {item.tag && !selected && <span className="tag">{item.tag}</span>}
         <span className="flight-card__price">{won(item.price)}</span>
-        {selected ? (
-          <span className="flight-card__selected-tag">✓ 선택됨</span>
-        ) : (
-          <button type="button" className="flight-card__select-btn" disabled={locked} onClick={onSelect}>
-            {locked ? '예약 완료' : '예약'}
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button type="button" className="card-detail-btn" onClick={onDetail}>상세</button>
+          {selected ? (
+            <span className="flight-card__selected-tag">✓ 선택됨</span>
+          ) : (
+            <button type="button" className="flight-card__select-btn" disabled={locked} onClick={onSelect}>
+              {locked ? '예약 완료' : '예약'}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -50,6 +54,8 @@ export default function FlightResults({ payload, selectedFlight, dispatch }) {
   const locked = Boolean(selectedFlight)
   const lowestKey = dates?.find((d) => d.low)?.key ?? dates?.[0]?.key
   const [selectedDate, setSelectedDate] = useState(selectedFlight?.date ?? lowestKey)
+  const [detailFlight, setDetailFlight] = useState(null)
+  const route = payload.route
 
   const selectFlight = (item, date, wd, isoDate) => {
     if (locked) return
@@ -99,9 +105,11 @@ export default function FlightResults({ payload, selectedFlight, dispatch }) {
               selected={isSameFlight(selectedFlight, item, activeDate.key)}
               locked={locked}
               onSelect={() => selectFlight(item, activeDate.key, activeDate.wd, activeDate.isoDate)}
+              onDetail={() => setDetailFlight(item)}
             />
           ))}
         </div>
+        {detailFlight && <FlightDetailModal flight={detailFlight} route={route} onClose={() => setDetailFlight(null)} />}
       </div>
     )
   }
@@ -116,8 +124,10 @@ export default function FlightResults({ payload, selectedFlight, dispatch }) {
           selected={isSameFlight(selectedFlight, item)}
           locked={locked}
           onSelect={() => selectFlight(item)}
+          onDetail={() => setDetailFlight(item)}
         />
       ))}
+      {detailFlight && <FlightDetailModal flight={detailFlight} route={route} onClose={() => setDetailFlight(null)} />}
     </div>
   )
 }
