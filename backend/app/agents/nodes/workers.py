@@ -52,16 +52,21 @@ def _resolve_destination(state) -> tuple[list[str], str]:
     """(지원 도시 목록, 원시 목적지명).
 
     coordinator가 LLM으로 추출한 `trip.destination`을 우선한다(자연어·정정·오타 처리). 지원 도시로
-    매칭되면 사용하고, 매칭 안 되면 사용자 발화를 교차검증(LLM 오추출 대비), 그래도 없으면 미지원.
+    매칭되면 사용하고, 매칭 안 되면 해외 임의 도시로 자동 해석(영문명으로 좌표·공항 조회)을 시도한다.
+    자동 해석도 안 되면 사용자 발화를 교차검증(LLM 오추출 대비), 그래도 없으면 미지원.
     LLM이 목적지를 못 냈으면(mock 등) 사용자 발화 스캔으로 폴백. raw는 미지원이어도 안내에 쓴다.
     """
     scan = _scan_user_cities(state["messages"])
-    dest = (state.get("trip") or {}).get("destination", "").strip()
+    trip = state.get("trip") or {}
+    dest = trip.get("destination", "").strip()
     if dest:
         cities = ts.find_cities(dest)
         if cities:
             return cities, dest
-        if scan:  # LLM 목적지가 지원 도시로 매칭 안 됨 → 발화 교차검증 우선
+        # 큐레이션 도시가 아니면 영문명으로 실시간 해석 시도(랑카위·다낭 등)
+        if ts.resolve_place(dest, trip.get("destination_en", "")):
+            return [dest], dest
+        if scan:  # 자동 해석도 실패 → 발화 교차검증 우선
             return scan, ""
         return [], dest  # 정말 미지원 → raw로 안내
     return (scan, "") if scan else ([], "")

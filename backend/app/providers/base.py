@@ -13,7 +13,7 @@
 
 from typing import Protocol, runtime_checkable
 
-from app.core.logging import get_logger
+from app.core.logging import get_logger, redact
 
 logger = get_logger(__name__)
 
@@ -46,7 +46,7 @@ def first_available(providers: list[Provider], city: str, limit: int) -> Result 
         try:
             result = provider.fetch(city, limit)
         except Exception as exc:  # noqa: BLE001 - provider 실패는 다음 provider/mock로 흡수
-            logger.warning("provider %s fetch 실패(%s): %s", provider.name, city, exc)
+            logger.warning("provider %s fetch 실패(%s): %s", provider.name, city, redact(exc))
             continue
         if result:
             n = len(result) if isinstance(result, list) else len(result.get("date_prices", []))

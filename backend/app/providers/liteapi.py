@@ -12,7 +12,7 @@ from datetime import date, timedelta
 import httpx
 
 from app.core.config import get_settings
-from app.core.logging import get_logger
+from app.core.logging import get_logger, redact
 from app.providers.intl import INTL_CITIES, supports_intl, to_krw
 
 _TAG_RE = re.compile(r"<[^>]+>")
@@ -52,7 +52,7 @@ def _list_hotels(country: str, city_en: str, limit: int) -> list[dict]:
         r.raise_for_status()
         return r.json().get("data", [])
     except Exception as exc:  # noqa: BLE001
-        logger.warning("LiteAPI hotels 실패(%s): %s", city_en, exc)
+        logger.warning("LiteAPI hotels 실패(%s): %s", city_en, redact(exc))
         return []
 
 
@@ -83,7 +83,7 @@ def _rate_map(hotel_ids: list[str]) -> dict[str, int]:
                 out[h.get("hotelId")] = to_krw(total / NIGHTS)  # 총액 → 1박가
         return out
     except Exception as exc:  # noqa: BLE001
-        logger.warning("LiteAPI rates 실패: %s", exc)
+        logger.warning("LiteAPI rates 실패: %s", redact(exc))
         return {}
 
 
@@ -168,7 +168,7 @@ def hotel_detail(hotel_id: str) -> dict | None:
         r.raise_for_status()
         d = r.json().get("data") or {}
     except Exception as exc:  # noqa: BLE001
-        logger.warning("LiteAPI hotel_detail 실패(%s): %s", hotel_id, exc)
+        logger.warning("LiteAPI hotel_detail 실패(%s): %s", hotel_id, redact(exc))
         return None
     if not d:
         return None

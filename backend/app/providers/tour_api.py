@@ -20,7 +20,7 @@ from urllib.parse import unquote
 import httpx
 
 from app.core.config import get_settings
-from app.core.logging import get_logger
+from app.core.logging import get_logger, redact
 
 logger = get_logger(__name__)
 
@@ -98,7 +98,7 @@ def _call(operation: str, **params) -> list[dict] | None:
         resp.raise_for_status()
         data = resp.json()  # 오류 시 XML이면 JSONDecodeError → except
     except Exception as exc:  # noqa: BLE001 - 모든 실패는 mock 폴백으로 흡수
-        logger.warning("TourAPI %s 실패: %s", operation, exc)
+        logger.warning("TourAPI %s 실패: %s", operation, redact(exc))
         return None
 
     header = data.get("response", {}).get("header", {})

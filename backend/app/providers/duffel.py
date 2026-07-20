@@ -13,7 +13,7 @@ from datetime import date, timedelta
 import httpx
 
 from app.core.config import get_settings
-from app.core.logging import get_logger
+from app.core.logging import get_logger, redact
 from app.providers.intl import INTL_CITIES, ORIGIN_AIRPORT, supports_intl, to_krw
 
 logger = get_logger(__name__)
@@ -75,15 +75,15 @@ def _offers(dest: str, dep_date: str) -> list[dict]:
         r.raise_for_status()
         return r.json()["data"].get("offers", [])
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Duffel offers 실패(%s %s): %s", dest, dep_date, exc)
+        logger.warning("Duffel offers 실패(%s %s): %s", dest, dep_date, redact(exc))
         return []
 
 
 def search_flights(city: str, limit: int | None = None) -> dict | None:
     """해외 도시행 날짜별 항공편을 flights 스키마로 반환."""
     meta = INTL_CITIES.get(city)
-    if not meta or not get_settings().has_duffel:
-        return None
+    if not meta or not meta.get("airport") or not get_settings().has_duffel:
+        return None  # 공항코드 미해석(자동 해석 실패) 시 항공 조회 생략
     if city in _CACHE:
         return _CACHE[city]
 

@@ -132,6 +132,10 @@ class Settings(BaseSettings):
     def has_liteapi(self) -> bool:
         return bool(self.liteapi_api_key)
 
+    @property
+    def has_openweather(self) -> bool:
+        return bool(self.openweather_api_key)
+
     def embedding_config(self) -> tuple[str, str, str]:
         """RAG 임베딩 (base_url, api_key, model)."""
         return self.embedding_base_url, self.embedding_api_key, self.embedding_model
@@ -158,4 +162,5 @@ AGENT_LLM_MAP: dict[str, str] = {
     "itinerary": "reasoning",  # 일정 서술은 품질 중요 → reasoning 유지(스트리밍 대상)
     "booking": "standard",
     "payment": "fast",
+    "places": "fast",  # 도시 대표 명소명 생성(단순 목록) → 빠른 티어
 }

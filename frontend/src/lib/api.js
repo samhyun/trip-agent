@@ -3,7 +3,7 @@
 
 import { TOKEN_KEY } from './auth'
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+export const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
 /**
  * 사용자 메시지를 백엔드 에이전트에 전달하고 구조화 응답을 받는다.

@@ -5,11 +5,16 @@
 """
 
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from urllib.parse import urlencode
 
 from app.core.config import get_settings
-from app.providers import intl, liteapi, registry, tour_api
+from app.core.logging import get_logger
+from app.providers import intl, liteapi, place, registry, tour_api, weather
 from app.services.data_loader import load
+
+logger = get_logger(__name__)
 
 
 # ----- 여행지 / 명소 -----
@@ -18,6 +23,57 @@ def find_cities(text: str) -> list[str]:
     """입력 문장에서 알려진 도시명을 모두 찾는다 (멀티 목적지 지원)."""
     destinations = load("destinations")
     return [city for city in destinations if city in text]
+
+
+def _famous_spots(name_en: str) -> list[str]:
+    """도시 영문명 → 대표 관광명소 영문명 6개(LLM). Geoapify 지오코딩 정확도 위해 영문.
+
+    구조화 출력은 이 모델에서 지연이 커(≈2.5배), 콤마 구분 평문으로 받아 파싱한다.
+    """
+    from app.agents.llm import get_llm  # 지연 임포트(서비스→에이전트 결합 최소화)
+
+    if not get_settings().llm_enabled:
+        return []
+    system = (
+        "List a city's 6 most famous tourist attractions for sightseeing "
+        "(landmarks, temples, beaches, parks, viewpoints; no restaurants, hotels, cafes or shops). "
+        "Reply with ONLY a comma-separated line of English place names — nothing else."
+    )
+    try:
+        r = get_llm("places").invoke(
+            [{"role": "system", "content": system}, {"role": "user", "content": f"City: {name_en}"}]
+        )
+        raw = (r.content or "").replace("\n", ",")
+        spots = [s.strip(" .\t-•") for s in raw.split(",")]
+        return [s for s in spots if s and len(s) < 60][:6]  # 빈값·문장형 제외
+    except Exception as exc:  # noqa: BLE001 - 실패 시 좌표 주변 명소로 폴백
+        logger.warning("famous_spots 실패(%s): %s", name_en, exc)
+        return []
+
+
+def resolve_place(ko: str, en: str) -> bool:
+    """해외 임의 도시(ko)를 영문명(en)으로 좌표·공항 해석해 provider가 인식하도록 등록.
+
+    성공하면 이후 get_attractions/search_flights/search_hotels가 이 도시를 커버한다.
+    자동 해석 도시는 큐레이션 명소가 없으므로 LLM으로 대표 명소를 생성해 메타에 채운다
+    (지오코딩 품질↑, 좌표 주변 조회 폴백보다 유명 명소 위주). 명소 생성(LLM)과 좌표·공항
+    해석(place.resolve)은 서로 독립이라 동시에 실행해 지연을 줄인다. mock 모드에선 False.
+    """
+    if mock_only():
+        return False
+    if ko in intl.INTL_CITIES:  # 이미 큐레이션/해석된 도시 → 재조회·명소 생성 불필요
+        return True
+    en = (en or "").strip()
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        meta_future = ex.submit(place.resolve, ko, en)
+        spots_future = ex.submit(_famous_spots, en) if en else None
+        meta = meta_future.result()
+        spots = spots_future.result() if spots_future else []
+    if not meta:
+        return False
+    if spots and not meta.get("spots"):  # INTL_CITIES 메타에 반영(다음 조회부터 재사용)
+        meta["spots"] = spots
+    return True
 
 
 def get_destination(city: str) -> dict | None:
@@ -40,6 +96,10 @@ def get_attractions(city: str) -> list[dict]:
 def search_flights(query_or_city: str) -> dict | None:
     """도시행 날짜별 항공권. 해외는 provider(Duffel) 우선, 국내/실패 시 mock 폴백."""
     if not mock_only():
+        # 도시명 직접 조회(자동 해석 도시는 destinations.json에 없어 find_cities로 못 잡음)
+        live = registry.flights(query_or_city)
+        if live:
+            return live
         for city in find_cities(query_or_city):
             live = registry.flights(city)
             if live:
@@ -98,7 +158,8 @@ def _date_key(iso: str) -> tuple[str, str]:
 def build_destination_payload(city: str, attractions: list[dict]) -> dict:
     """destination_carousel 카드 페이로드 (프론트 DestinationCarousel 계약).
 
-    item = {id, name, tags(#접두), gradient, area, desc}
+    item = {id, name, tags(#접두), gradient, area, desc, lat, lng, image}
+    좌표가 있으면 명소 마커 지도(mapUrl)도 포함한다.
     """
     items = [
         {
@@ -108,11 +169,26 @@ def build_destination_payload(city: str, attractions: list[dict]) -> dict:
             "gradient": a.get("gradient", i),
             "area": a.get("area"),
             "desc": a.get("desc", ""),
+            "lat": a.get("lat"),
+            "lng": a.get("lng"),
             "image": a.get("image"),
         }
         for i, a in enumerate(attractions)
     ]
-    return {"city": city, "items": items}
+    payload = {"city": city, "items": items}
+    # lat/lng가 0인 정상 좌표를 배제하지 않도록 None 검사
+    points = [(a["lat"], a["lng"]) for a in items if a.get("lat") is not None and a.get("lng") is not None]
+    if points:
+        # 키 노출 방지: 프론트엔 백엔드 프록시 경로만 주고, 지도 이미지는 /details/map이 대신 가져온다
+        if get_settings().has_geoapify:
+            pts_param = ";".join(f"{la:.5f},{lo:.5f}" for la, lo in points[:20])
+            payload["mapPath"] = "/details/map?" + urlencode({"pts": pts_param})
+        clat = sum(p[0] for p in points) / len(points)
+        clon = sum(p[1] for p in points) / len(points)
+        wx = weather.current(lat=clat, lon=clon)  # 명소 중심 좌표의 현재 날씨
+        if wx:
+            payload["weather"] = wx
+    return payload
 
 
 def build_flight_payload(flights: dict) -> dict:
