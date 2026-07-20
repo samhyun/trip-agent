@@ -18,6 +18,7 @@ from app.agents.nodes import (
     itinerary_node,
     payment_node,
     planner_node,
+    route_node,
     supervisor_node,
 )
 from app.agents.state import State
@@ -39,6 +40,7 @@ def build_graph():
     builder.add_node("planner", planner_node)
     builder.add_node("supervisor", supervisor_node)
     builder.add_node("destination", destination_node)
+    builder.add_node("route", route_node)
     builder.add_node("itinerary", itinerary_node)
     builder.add_node("booking", booking_node)
     builder.add_node("payment", payment_node)

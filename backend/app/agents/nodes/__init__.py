@@ -9,6 +9,7 @@ from app.agents.nodes.workers import (
     destination_node,
     itinerary_node,
     payment_node,
+    route_node,
 )
 
 __all__ = [
@@ -18,6 +19,7 @@ __all__ = [
     "planner_node",
     "supervisor_node",
     "destination_node",
+    "route_node",
     "itinerary_node",
     "booking_node",
     "payment_node",

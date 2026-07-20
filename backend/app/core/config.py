@@ -163,4 +163,5 @@ AGENT_LLM_MAP: dict[str, str] = {
     "booking": "standard",
     "payment": "fast",
     "places": "fast",  # 도시 대표 명소명 생성(단순 목록) → 빠른 티어
+    "route": "standard",  # 멀티도시 동선 A/B 설계(지리·이동수단 지식) → 표준 티어
 }

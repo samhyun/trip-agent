@@ -11,11 +11,12 @@ from typing import Literal
 
 from langgraph.graph import MessagesState
 
-# supervisor가 라우팅할 워커 팀
-TEAM_MEMBERS = ["destination", "itinerary", "booking", "payment"]
+# supervisor가 라우팅할 워커 팀 (의존성 순: 명소→동선→일정→예약→결제)
+# route: 여러 도시 방문 시 방문 순서·이동 동선 A/B안 비교 (단일 도시면 planner가 생략)
+TEAM_MEMBERS = ["destination", "route", "itinerary", "booking", "payment"]
 
 # Router 결정 옵션 (워커 + 종료)
-RouteOption = Literal["destination", "itinerary", "booking", "payment", "FINISH"]
+RouteOption = Literal["destination", "route", "itinerary", "booking", "payment", "FINISH"]
 
 
 class State(MessagesState):
