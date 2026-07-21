@@ -74,8 +74,11 @@ function parsePeople(text) {
 }
 
 function parseNights(text) {
-  const m = text.match(/(\d+)\s*박/)
-  return m ? Number(m[1]) : null
+  // "N박"이 여러 번 나오면 합산 — 스플릿 스테이("제주시 1박, 서귀포 1박" = 총 2박) 지원.
+  // "2박 3일"처럼 한 번이면 그대로. (같은 발화에 지역별 박수를 나눠 말하는 관례를 따른다)
+  const ms = [...text.matchAll(/(\d+)\s*박/g)]
+  if (ms.length === 0) return null
+  return ms.reduce((sum, m) => sum + Number(m[1]), 0)
 }
 
 // ---------- 탐색 헬퍼 (App 의 스마트 dispatch 가 사용) ----------
