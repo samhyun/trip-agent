@@ -77,7 +77,10 @@ def get_destination(city: str) -> dict | None:
 
 
 def get_attractions(city: str) -> list[dict]:
-    """도시의 명소 목록. provider(국내 TourAPI 등) 우선, 실패/빈결과 시 mock 폴백."""
+    """도시의 명소 목록. provider(국내 TourAPI 등) 우선, 실패/빈결과 시 mock 폴백.
+
+    라이브 성공 결과는 provider(tour_api._CACHE)가 도시별로 캐시하므로 반복 조회는 즉시.
+    """
     if not mock_only():
         live = registry.attractions(city)
         if live:
