@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.providers import intl, liteapi, place, registry, tour_api
+from app.providers import duffel, intl, liteapi, place, registry, tour_api
 from app.services.data_loader import load
 
 logger = get_logger(__name__)
@@ -92,40 +92,69 @@ def get_attractions(city: str) -> list[dict]:
 
 # ----- 항공 -----
 
-def search_flights(query_or_city: str, start_date: str | None = None) -> dict | None:
-    """도시행 날짜별 항공권. 해외는 provider(Duffel) 우선, 국내/실패 시 mock 폴백.
+def search_flights(query_or_city: str, start_date: str | None = None, nights: int | None = None) -> dict | None:
+    """왕복 항공(가는 편+오는 편이 한 옵션). 해외=Duffel 왕복, 국내/실패 시 mock 왕복 폴백.
 
-    start_date(YYYY-MM-DD)가 있으면 사용자가 말한 여행 시작일 기준으로 날짜를 맞춘다.
+    출발일=start_date(없으면 오늘+30), 귀국일=출발일+박수(없으면 3박).
     """
+    dep, ret = _trip_dates(start_date, nights)
     if not mock_only():
-        # 도시명 직접 조회(자동 해석 도시는 destinations.json에 없어 find_cities로 못 잡음).
-        # live(Duffel)는 start_date로 실제 출발일을 조회하므로 재정렬하지 않는다.
-        live = registry.flights(query_or_city, start_date=start_date)
+        live = duffel.roundtrip(query_or_city, dep, ret)
         if live:
             return live
         for city in find_cities(query_or_city):
-            live = registry.flights(city, start_date=start_date)
+            live = duffel.roundtrip(city, dep, ret)
             if live:
                 return live
-    # mock은 고정 날짜라 시작일 기준으로 라벨만 재정렬
+    return _mock_roundtrip(query_or_city, dep, ret)
+
+
+def _trip_dates(start_date: str | None, nights: int | None) -> tuple[str, str]:
+    """(출발일, 귀국일) ISO. start_date 없거나 과거면 오늘+30, 귀국=출발+박수(기본 3박)."""
+    n = nights if isinstance(nights, int) and nights > 0 else 3
+    d = None
+    if start_date:
+        try:
+            d = datetime.strptime(start_date, "%Y-%m-%d").date()
+        except ValueError:
+            d = None
+    today = datetime.now().date()
+    if d is None or d < today:
+        d = today + timedelta(days=30)
+    return d.isoformat(), (d + timedelta(days=n)).isoformat()
+
+
+def _shift_time(hhmm: str, hours: int) -> str:
+    """'07:30' → hours 만큼 이동한 'HH:MM' (mock 오는 편 시간 생성용)."""
+    try:
+        h, m = map(int, hhmm.split(":"))
+        return f"{(h + hours) % 24:02d}:{m:02d}"
+    except (ValueError, AttributeError):
+        return hhmm
+
+
+def _mock_roundtrip(query_or_city: str, dep: str, ret: str) -> dict | None:
+    """mock(flights.json)으로 왕복 옵션 구성. 오는 편은 저녁 시간대, 가격은 왕복(≈2배)."""
     flights = load("flights")
     for route_key, info in flights.items():
-        if any(city in query_or_city for city in route_key.split("-")):
-            return _align_flight_dates({"route_key": route_key, **info}, start_date)
+        if not any(c in query_or_city for c in route_key.split("-")):
+            continue
+        dps = info.get("date_prices", [])
+        oneway = dps[0]["flights"] if dps else []
+        origin, city = route_key.split("-")[0], route_key.split("-")[-1]
+        options = [
+            {
+                "air": f["airline"],
+                "outDep": f["dep"],
+                "outArr": f["arr"],
+                "inDep": _shift_time(f["dep"], 12),  # 오는 편(저녁)
+                "inArr": _shift_time(f["arr"], 12),
+                "price": f["price"] * 2,  # 왕복 총액
+            }
+            for f in oneway[:5]
+        ]
+        return {"route": f"{origin} ↔ {city}", "depDate": dep, "returnDate": ret, "flights": options}
     return None
-
-
-def _align_flight_dates(flights: dict, start_date: str | None) -> dict:
-    """날짜별 항공을 여행 시작일부터로 재정렬(라벨). start_date 없거나 형식 오류면 원본 유지."""
-    if not start_date:
-        return flights
-    try:
-        base = datetime.strptime(start_date, "%Y-%m-%d").date()
-    except ValueError:
-        return flights
-    dps = flights.get("date_prices", [])
-    aligned = [{**dp, "date": (base + timedelta(days=i)).isoformat()} for i, dp in enumerate(dps)]
-    return {**flights, "date_prices": aligned}
 
 
 # ----- 숙소 -----
@@ -196,47 +225,37 @@ def build_destination_payload(city: str, attractions: list[dict]) -> dict:
     return {"city": city, "items": items}
 
 
+def _date_label(iso: str) -> str:
+    """'2026-08-14' → '8.14 (목)'. 없으면 ''."""
+    if not iso:
+        return ""
+    key, wd = _date_key(iso)
+    return f"{key} ({wd})"
+
+
 def build_flight_payload(flights: dict) -> dict:
-    """flight_results 카드 페이로드 (프론트 FlightResults byDate 계약).
+    """flight_results 카드 페이로드 (왕복). 프론트 FlightResults roundtrip 계약.
 
-    {mode:'byDate', route, dates:[{key,wd,price,low}], flightsByDate:{key:[{air,dep,arr,dur,price,tag,route}]}}
+    {mode:'roundtrip', route, depLabel, returnLabel,
+     flights:[{air, outDep, outArr, inDep, inArr, price, tag}]}
     """
-    date_prices = flights.get("date_prices", [])
-    duration = flights.get("duration", "")
-    route = flights.get("route", flights.get("route_key", ""))
-    lowest_overall = min((dp["lowest"] for dp in date_prices), default=None)
-
-    dates: list[dict] = []
-    flights_by_date: dict[str, list[dict]] = {}
-    for dp in date_prices:
-        key, wd = _date_key(dp["date"])
-        # key/label 은 표시용, isoDate 는 프론트의 식별·날짜 계산용(월말 오버플로 방지)
-        dates.append(
-            {
-                "key": key,
-                "isoDate": dp["date"],
-                "wd": wd,
-                "price": dp["lowest"],
-                "low": dp["lowest"] == lowest_overall,
-            }
-        )
-        cheapest = min((f["price"] for f in dp["flights"]), default=None)
-        cards = []
-        for f in dp["flights"]:
-            card = {
-                "air": f["airline"],
-                "dep": f["dep"],
-                "arr": f["arr"],
-                "dur": duration,
-                "price": f["price"],
-                "route": route,
-            }
-            if f["price"] == cheapest and dp["lowest"] == lowest_overall:
-                card["tag"] = "최저가"
-            cards.append(card)
-        flights_by_date[key] = cards
-
-    return {"mode": "byDate", "route": route, "dates": dates, "flightsByDate": flights_by_date}
+    options = flights.get("flights", [])
+    cheapest = min((f["price"] for f in options), default=None)
+    cards = []
+    for f in options:
+        card = {**f}
+        if f["price"] == cheapest:
+            card["tag"] = "최저가"
+        cards.append(card)
+    return {
+        "mode": "roundtrip",
+        "route": flights.get("route", ""),
+        "depDate": flights.get("depDate", ""),  # 프론트가 선택 시 일정 라벨 계산에 사용
+        "returnDate": flights.get("returnDate", ""),
+        "depLabel": _date_label(flights.get("depDate", "")),
+        "returnLabel": _date_label(flights.get("returnDate", "")),
+        "flights": cards,
+    }
 
 
 def build_hotel_payload(city: str, hotels: list[dict], sort: str | None = None) -> dict:
@@ -309,9 +328,9 @@ def estimate_total(cities: list[str], travelers: int = 2, nights: int = 3) -> in
     """확정서용 개략 합계 = 최저가 항공×인원 + 최저가 숙소×박수. 프론트가 실제 선택가로 덮어쓴다."""
     total = 0
     for city in cities:
-        flights = search_flights(city)
-        if flights and flights.get("date_prices"):
-            cheapest_flight = min(dp["lowest"] for dp in flights["date_prices"])
+        flights = search_flights(city, nights=nights)
+        if flights and flights.get("flights"):
+            cheapest_flight = min(f["price"] for f in flights["flights"])  # 왕복 총액
             total += cheapest_flight * travelers
         hotels = load("hotels").get(city, [])
         if hotels:

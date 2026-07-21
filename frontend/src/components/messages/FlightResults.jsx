@@ -1,149 +1,83 @@
 import { useEffect, useState } from 'react'
 import { won } from '../../lib/format'
-import FlightDetailModal from './FlightDetailModal'
 
-function isSameFlight(selected, candidate, date) {
-  if (!selected) return false
-  if (selected.air !== candidate.air || selected.dep !== candidate.dep || selected.price !== candidate.price) return false
-  if (date !== undefined && selected.date !== date) return false
-  return true
-}
-
-function FlightCard({ item, selected, locked, onSelect, onDetail }) {
+// 왕복(가는 편+오는 편이 한 옵션) 항공 카드. 한 옵션을 고르면 왕복이 선택된다.
+function isSameFlight(sel, f) {
   return (
-    <div className={`flight-card${selected ? ' flight-card--selected' : ''}${locked && !selected ? ' flight-card--disabled' : ''}`}>
-      <div className="flight-card__air">
-        <span>{item.air}</span>
-        <span>🛫</span>
-      </div>
-      <div className="flight-card__route">
-        <div className="flight-card__time">
-          <div>{item.dep}</div>
-          <div>출발</div>
-        </div>
-        <div className="flight-card__dur">
-          <span>{item.dur}</span>
-          <span>──✈──</span>
-          <span>{item.stops ? `${item.stops}경유` : '직항'}</span>
-        </div>
-        <div className="flight-card__time">
-          <div>{item.arr}</div>
-          <div>도착</div>
-        </div>
-      </div>
-      <div className="flight-card__price-col">
-        {item.tag && !selected && <span className="tag">{item.tag}</span>}
-        <span className="flight-card__price">{won(item.price)}</span>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <button type="button" className="card-detail-btn" onClick={onDetail}>상세</button>
-          {selected ? (
-            <span className="flight-card__selected-tag">✓ 선택됨</span>
-          ) : (
-            <button type="button" className="flight-card__select-btn" disabled={locked} onClick={onSelect}>
-              {locked ? '선택 불가' : '선택'}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+    Boolean(sel) &&
+    sel.air === f.air &&
+    sel.outDep === f.outDep &&
+    sel.inDep === f.inDep &&
+    sel.price === f.price
   )
 }
 
 export default function FlightResults({ payload, selectedFlight, locked = false, dispatch }) {
-  const { mode, dates, flightsByDate, options } = payload
-  // locked = 결제 완료(그 전엔 자유롭게 변경/재선택 가능)
-  const lowestKey = dates?.find((d) => d.low)?.key ?? dates?.[0]?.key
-  const [selectedDate, setSelectedDate] = useState(selectedFlight?.date ?? lowestKey)
-  const [detailFlight, setDetailFlight] = useState(null)
+  const { flights = [], route, depLabel, returnLabel, depDate } = payload
   // 이미 선택한 항공편이 있으면(예약 완료 재마운트) 그 항목이 보이도록 펼친 채로 시작
   const [showAll, setShowAll] = useState(Boolean(selectedFlight))
-  const route = payload.route
-  const INITIAL = 3
-  // 선택이 마운트 후에 설정돼도 그 항목·날짜가 보이도록 동기화
   useEffect(() => {
-    if (selectedFlight) {
-      setShowAll(true)
-      if (selectedFlight.date) setSelectedDate(selectedFlight.date)
-    }
+    if (selectedFlight) setShowAll(true)
   }, [selectedFlight])
 
-  const selectFlight = (item, date, wd, isoDate) => {
+  const INITIAL = 3
+  const shown = showAll ? flights : flights.slice(0, INITIAL)
+
+  const select = (f) => {
     if (locked) return
-    dispatch({ type: 'SELECT_FLIGHT', flight: { ...item, date, wd, isoDate } })
+    dispatch({ type: 'SELECT_FLIGHT', flight: { ...f, route, isoDate: depDate } })
   }
 
-  if (mode === 'byDate') {
-    const activeDate = dates.find((d) => d.key === selectedDate) ?? dates[0]
-    const flights = flightsByDate[activeDate.key] ?? []
-    const shownFlights = showAll ? flights : flights.slice(0, INITIAL)
-
-    return (
-      <div className="fade-up" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div className="card" style={{ padding: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 11 }}>
-            <span style={{ fontSize: 12.5, fontWeight: 800 }}>📅 날짜별 최저가</span>
-            <span style={{ fontSize: 11, color: 'var(--muted)' }}>편도 · 1인</span>
-          </div>
-          <div className="date-pills scroll-thin">
-            {dates.map((d) => (
-              <button
-                key={d.key}
-                type="button"
-                className={`date-pill${d.key === activeDate.key ? ' date-pill--active' : ''}`}
-                onClick={() => { setSelectedDate(d.key); setShowAll(false) }}
-                disabled={locked && d.key !== selectedFlight?.date}
-              >
-                <span className="date-pill__wd">{d.wd}</span>
-                <span className="date-pill__day">{d.key}</span>
-                <span className="date-pill__price">{won(d.price)}</span>
-                {d.low && <span className="tag">최저가</span>}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--primary)' }}>
-            {activeDate.key} ({activeDate.wd}요일)
-          </span>
-          <span style={{ fontSize: 12, color: 'var(--muted)' }}>항공편</span>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-          {shownFlights.map((item) => (
-            <FlightCard
-              key={`${item.air}-${item.dep}`}
-              item={item}
-              selected={isSameFlight(selectedFlight, item, activeDate.key)}
-              locked={locked}
-              onSelect={() => selectFlight(item, activeDate.key, activeDate.wd, activeDate.isoDate)}
-              onDetail={() => setDetailFlight(item)}
-            />
-          ))}
-          {!locked && flights.length > INITIAL && (
-            <button type="button" className="show-more-btn" onClick={() => setShowAll((v) => !v)}>
-              {showAll ? '접기 ▴' : `항공편 ${flights.length - INITIAL}개 더보기 ▾`}
-            </button>
-          )}
-        </div>
-        {detailFlight && <FlightDetailModal flight={detailFlight} route={route} onClose={() => setDetailFlight(null)} />}
-      </div>
-    )
-  }
-
-  // mode === 'simple' — 단일 목적지 리스트 (국제선 등 날짜 구분 없음)
   return (
-    <div className="fade-up" style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-      {options.map((item) => (
-        <FlightCard
-          key={`${item.air}-${item.dep}`}
-          item={item}
-          selected={isSameFlight(selectedFlight, item)}
-          locked={locked}
-          onSelect={() => selectFlight(item)}
-          onDetail={() => setDetailFlight(item)}
-        />
-      ))}
-      {detailFlight && <FlightDetailModal flight={detailFlight} route={route} onClose={() => setDetailFlight(null)} />}
+    <div className="fade-up" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div className="card" style={{ padding: 14 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 800 }}>✈️ {route} · 왕복</div>
+        <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>
+          가는 편 <b>{depLabel || '미정'}</b> · 오는 편 <b>{returnLabel || '미정'}</b> · 1인 왕복 요금
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+        {shown.map((f, i) => {
+          const selected = isSameFlight(selectedFlight, f)
+          return (
+            <div
+              key={`${f.air}-${f.outDep}-${i}`}
+              className={`flight-card flight-card--rt${selected ? ' flight-card--selected' : ''}${locked && !selected ? ' flight-card--disabled' : ''}`}
+            >
+              <div className="flight-rt__head">
+                <span className="flight-rt__air">{f.air}</span>
+                {f.tag && !selected && <span className="tag">{f.tag}</span>}
+              </div>
+              <div className="flight-rt__legs">
+                <div className="flight-rt__leg">
+                  <span className="flight-rt__dir">가는 편</span>
+                  <span className="flight-rt__time">{f.outDep} → {f.outArr}</span>
+                </div>
+                <div className="flight-rt__leg">
+                  <span className="flight-rt__dir">오는 편</span>
+                  <span className="flight-rt__time">{f.inDep || '-'} → {f.inArr || '-'}</span>
+                </div>
+              </div>
+              <div className="flight-rt__foot">
+                <span className="flight-card__price">{won(f.price)}</span>
+                {selected ? (
+                  <span className="flight-card__selected-tag">✓ 선택됨</span>
+                ) : (
+                  <button type="button" className="flight-card__select-btn" disabled={locked} onClick={() => select(f)}>
+                    {locked ? '선택 불가' : '선택'}
+                  </button>
+                )}
+              </div>
+            </div>
+          )
+        })}
+        {!locked && flights.length > INITIAL && (
+          <button type="button" className="show-more-btn" onClick={() => setShowAll((v) => !v)}>
+            {showAll ? '접기 ▴' : `항공편 ${flights.length - INITIAL}개 더보기 ▾`}
+          </button>
+        )}
+      </div>
     </div>
   )
 }

@@ -259,7 +259,7 @@ function handleSelectFlight(state, flight) {
   let s = patchTrip(state, {
     flight: { ...flight, route: flight.route || `${state.trip.destination ?? '여행지'} 항공` },
   })
-  if (flight.date) s = patchTrip(s, { dateLabel: dateRangeLabel(flight.isoDate || flight.date, s.trip.nights || 3) })
+  if (flight.isoDate || flight.date) s = patchTrip(s, { dateLabel: dateRangeLabel(flight.isoDate || flight.date, s.trip.nights || 3) })
   return patchTrip(s, { total: computeTotal(s.trip) })
 }
 

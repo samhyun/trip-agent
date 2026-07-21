@@ -295,14 +295,15 @@ def booking_node(state: State) -> Command:
     city = cities[0]
     trip = state.get("trip") or {}
     sort = trip.get("sort")  # 'price' | 'rating' | None
-    flights = ts.search_flights(city, start_date=trip.get("start_date"))  # 사용자가 말한 여행일 반영
+    # 왕복(가는 편+오는 편). 사용자가 말한 출발일·박수 반영
+    flights = ts.search_flights(city, start_date=trip.get("start_date"), nights=trip.get("nights"))
     hotels = ts.search_hotels(city)
 
     messages = []
     if flights:
         messages.append(
             AIMessage(
-                content=f"{flights.get('route', flights['route_key'])} 날짜별 최저가예요. 원하는 날짜를 골라주세요 ✈️",
+                content=f"{flights.get('route', '항공')} 왕복 최저가예요. 가는 편·오는 편이 함께 있어요 ✈️",
                 name="booking",
                 additional_kwargs={
                     "card_type": "flight_results",

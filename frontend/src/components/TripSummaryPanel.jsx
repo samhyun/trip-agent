@@ -112,7 +112,8 @@ export default function TripSummaryPanel({ trip, stage, onProceed, onOpenAuth, o
                   <div className="trip-panel__item-meta">
                     <strong>{trip.flight.route}</strong>
                     <span>
-                      {trip.flight.air} · {trip.flight.dep}
+                      {trip.flight.air} · 왕복 {trip.flight.outDep}
+                      {trip.flight.inDep ? ` / ${trip.flight.inDep}` : ''}
                     </span>
                   </div>
                   <span className="trip-panel__item-price">{won(trip.flight.price * trip.travelers)}</span>

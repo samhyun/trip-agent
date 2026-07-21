@@ -26,13 +26,14 @@ def search_destination_info(query: str) -> str:
 
 @tool
 def search_flights(city: str) -> str:
-    """도시행 항공권의 날짜별 최저가와 항공편 목록을 조회한다."""
+    """도시행 왕복 항공권(가는 편+오는 편)을 조회한다."""
     flight = ts.search_flights(city)
     if not flight:
         return f"'{city}' 노선 항공권을 찾지 못했어요."
-    lines = [f"{flight['route_key']} ({flight['duration']})"]
-    for dp in flight["date_prices"]:
-        lines.append(f"  {dp['date']} · 최저가 {dp['lowest']:,}원 ({len(dp['flights'])}편)")
+    lines = [f"{flight.get('route', '항공')} 왕복 ({flight.get('depDate')}~{flight.get('returnDate')})"]
+    for f in flight.get("flights", []):
+        inb = f" / 오는 {f['inDep']}" if f.get("inDep") else ""
+        lines.append(f"  {f['air']} · 가는 {f['outDep']}{inb} · {f['price']:,}원")
     return "\n".join(lines)
 
 

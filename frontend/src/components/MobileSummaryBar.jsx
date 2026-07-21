@@ -39,7 +39,7 @@ export default function MobileSummaryBar({ trip, stage, open, onToggle, onProcee
             <div className="mobile-summary__item">
               <span>✈️</span>
               <span>
-                {trip.flight.route} · {trip.flight.dep}
+                {trip.flight.route} · 왕복 {trip.flight.outDep}
               </span>
               <span>{won(trip.flight.price * trip.travelers)}</span>
             </div>

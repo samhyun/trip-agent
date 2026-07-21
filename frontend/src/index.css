@@ -821,6 +821,52 @@ a:hover {
   box-shadow: var(--shadow-sm);
   flex-wrap: wrap;
 }
+/* 왕복 항공 카드 (가는 편 + 오는 편 한 옵션) */
+.flight-card--rt {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 9px;
+}
+.flight-rt__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 800;
+}
+.flight-rt__legs {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.flight-rt__leg {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.flight-rt__dir {
+  flex: none;
+  width: 48px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.flight-rt__time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.flight-rt__foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 9px;
+}
+.flight-rt__foot .flight-card__select-btn,
+.flight-rt__foot .flight-card__selected-tag {
+  margin-left: auto;
+}
 .flight-card--selected {
   border: 2px solid var(--primary);
   padding: 11px 13px;

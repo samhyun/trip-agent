@@ -142,7 +142,7 @@ function useConversation() {
           if (s.trip.flight && s.trip.hotels.length > 0) {
             const f = s.trip.flight
             const lines = [
-              `${f.air} ${f.dep} 항공편으로 예약할게요`,
+              `${f.air} ${f.outDep} 항공편으로 예약할게요`,
               ...s.trip.hotels.map((h) => `${h.name} 숙소로 예약할게요`),
               `총 ${s.trip.total}원, 결제까지 진행할게요`,
             ]

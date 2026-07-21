@@ -65,77 +65,59 @@ def _fmt_duration(iso: str | None) -> str:
     return "약 " + " ".join(parts) if parts else ""
 
 
-def _offers(dest: str, dep_date: str) -> list[dict]:
-    """단일 출발일의 offer 목록. 실패 시 []."""
+def _offers(dest: str, dep_date: str, return_date: str | None) -> list[dict]:
+    """왕복(ICN→dest→ICN) offer 목록. return_date 없으면 편도. 실패 시 []."""
+    slices = [{"origin": ORIGIN_AIRPORT, "destination": dest, "departure_date": dep_date}]
+    if return_date:
+        slices.append({"origin": dest, "destination": ORIGIN_AIRPORT, "departure_date": return_date})
     try:
         r = httpx.post(
             OFFER_URL,
             headers=_headers(),
             params={"return_offers": "true"},
-            json={"data": {
-                "slices": [{"origin": ORIGIN_AIRPORT, "destination": dest, "departure_date": dep_date}],
-                "passengers": [{"type": "adult"}],
-                "cabin_class": "economy",
-            }},
+            json={"data": {"slices": slices, "passengers": [{"type": "adult"}], "cabin_class": "economy"}},
             timeout=TIMEOUT,
         )
         r.raise_for_status()
         return r.json()["data"].get("offers", [])
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Duffel offers 실패(%s %s): %s", dest, dep_date, redact(exc))
+        logger.warning("Duffel offers 실패(%s %s~%s): %s", dest, dep_date, return_date, redact(exc))
         return []
 
 
-def search_flights(city: str, start_date: str | None = None) -> dict | None:
-    """해외 도시행 날짜별 항공편을 flights 스키마로 반환. start_date부터의 실제 출발일을 조회."""
+def roundtrip(city: str, dep_date: str | None, return_date: str | None) -> dict | None:
+    """해외 도시행 왕복 항공편(가는 편+오는 편이 한 옵션). 지정 날짜로 실제 조회. 실패 시 None."""
     meta = INTL_CITIES.get(city)
     if not meta or not meta.get("airport") or not get_settings().has_duffel:
         return None  # 공항코드 미해석(자동 해석 실패) 시 항공 조회 생략
-    cache_key = (city, start_date or "")  # 출발일별로 캐시 분리
+    dep = _dates(1, dep_date)[0]  # 과거·미지정 방어 포함
+    ret = _dates(1, return_date)[0] if return_date else None
+    cache_key = (city, dep, ret or "")
     if cache_key in _CACHE:
         return _CACHE[cache_key]
 
     dest = meta["airport"]
-    duration = ""
-    date_prices = []
-    for dep in _dates(NUM_DATES, start_date):
-        offers = _offers(dest, dep)
-        if not offers:
-            continue
-        cheapest = sorted(offers, key=lambda o: float(o["total_amount"]))[:PER_DATE]
-        flights = []
-        for o in cheapest:
-            segs = o["slices"][0]["segments"]
-            flights.append({
-                "airline": o["owner"]["name"],
-                "dep": segs[0]["departing_at"][11:16],
-                "arr": segs[-1]["arriving_at"][11:16],
-                "price": to_krw(o["total_amount"]),
-            })
-        if not duration:
-            duration = _fmt_duration(cheapest[0]["slices"][0].get("duration"))
-        date_prices.append({"date": dep, "lowest": min(f["price"] for f in flights), "flights": flights})
-
-    if not date_prices:
+    offers = _offers(dest, dep, ret)
+    if not offers:
         return None
-    result = {
-        "route_key": f"{ORIGIN_AIRPORT}-{dest}",
-        "route": f"인천 → {city}",
-        "duration": duration or "약 5시간",
-        "date_prices": date_prices,
-    }
-    logger.info("Duffel flights[%s] %d일치", city, len(date_prices))
+    cheapest = sorted(offers, key=lambda o: float(o["total_amount"]))[:PER_DATE]
+    flights = []
+    for o in cheapest:
+        slices = o["slices"]
+        out = slices[0]["segments"]
+        opt = {
+            "air": o["owner"]["name"],
+            "outDep": out[0]["departing_at"][11:16],
+            "outArr": out[-1]["arriving_at"][11:16],
+            "price": to_krw(o["total_amount"]),  # 왕복 총액
+        }
+        if len(slices) > 1:  # 오는 편
+            inb = slices[1]["segments"]
+            opt["inDep"] = inb[0]["departing_at"][11:16]
+            opt["inArr"] = inb[-1]["arriving_at"][11:16]
+        flights.append(opt)
+
+    result = {"route": f"인천 ↔ {city}", "depDate": dep, "returnDate": ret, "flights": flights}
+    logger.info("Duffel 왕복[%s] %d옵션 (%s~%s)", city, len(flights), dep, ret)
     _CACHE[cache_key] = result
     return result
-
-
-class DuffelFlights:
-    """해외 항공 provider (base.Provider 규약). fetch는 flights dict 반환."""
-
-    name = "duffel.flights"
-
-    def supports(self, city: str) -> bool:
-        return supports_intl(city) and get_settings().has_duffel
-
-    def fetch(self, city: str, limit: int | None = None, start_date: str | None = None) -> dict | None:
-        return search_flights(city, start_date)
