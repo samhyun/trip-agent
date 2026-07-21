@@ -43,16 +43,26 @@ def _confirmation_turn(turns: list) -> dict | None:
 def _parse_selected_bookings(history_text: str) -> list[dict]:
     """대화 히스토리에서 선택한 항공/숙소를 예약 항목으로 추출.
 
-    재선택이 있을 수 있으므로 **가장 마지막(최신) 선택**을 사용한다.
+    재선택이 있을 수 있으므로 항공은 **가장 마지막(최신) 선택**을 사용한다.
+    숙소는 스플릿 스테이(지역별 여러 곳)를 지원해야 하므로, 최종 결제 발화 블록
+    (= 마지막 항공 선택 이후)의 숙소를 **모두** 기록한다.
     """
     items = []
-    flights = _FLIGHT_RE.findall(history_text)
+    flights = list(_FLIGHT_RE.finditer(history_text))
+    last_flight_end = flights[-1].end() if flights else 0
     if flights:
-        air, dep = flights[-1]
+        air, dep = flights[-1].groups()
         items.append({"type": "flight", "title": f"{air.strip()} {dep}"})
-    hotels = _HOTEL_RE.findall(history_text)
-    if hotels:
-        items.append({"type": "hotel", "title": hotels[-1].strip()})
+    hotels = list(_HOTEL_RE.finditer(history_text))
+    # 결제 발화(PANEL_PROCEED)는 항공 1줄 뒤에 숙소들이 이어지는 형식 — 마지막 항공 이후 것이 최종 선택
+    tail = [m for m in hotels if m.start() >= last_flight_end]
+    chosen = tail if tail else hotels[-1:]  # 항공 없이 숙소만 있는 방어
+    seen: set[str] = set()
+    for m in chosen:
+        name = m.group(1).strip()
+        if name and name not in seen:
+            seen.add(name)
+            items.append({"type": "hotel", "title": name})
     return items
 
 
