@@ -138,17 +138,75 @@ def _card(content: str, name: str, card_type: str, payload: dict, visited: list)
     )
 
 
+@tool
+def get_attractions(interest: str = "") -> str:
+    """목적지의 인기 명소를 조회한다.
+
+    - interest: 특정 취향으로 좁히고 싶을 때(예: '자연', '바다', '역사', '쇼핑', '맛집'). 없으면 ''(전체)
+    """
+    return ""  # 실제 실행은 destination_node 가 처리
+
+
+_DESTINATION_TOOLS = [get_attractions]
+
+
+def _filter_attractions(attractions: list[dict], interest: str, city: str) -> tuple[list[dict], str]:
+    """관심사(태그) 필터. 딱 맞는 태그가 없으면 전체 유지 + 노트(빈 카드 방지 — booking과 동일 원칙)."""
+    key = interest.strip() if isinstance(interest, str) else ""  # 비문자열·공백 방어
+    if not key:
+        return attractions, ""
+
+    def _match(a: dict) -> bool:
+        tags = a.get("tags")
+        if not isinstance(tags, (list, tuple)):  # tags가 None·비반복형이어도 안전
+            return False
+        return any(isinstance(t, str) and (key in t or t in key) for t in tags)
+
+    hit = [a for a in attractions if _match(a)]
+    if hit:
+        return hit, ""
+    return attractions, f"'{key}' 취향에 딱 맞는 태그는 없어 {city} 대표 명소를 보여줌"
+
+
+def _destination_interest(state: State) -> str:
+    """에이전트가 사용자 취향을 보고 명소 조회 관심사를 결정(get_attractions 툴콜). 항상 정규화된 문자열."""
+    try:
+        ai = get_llm("destination").bind_tools(_DESTINATION_TOOLS).invoke(
+            [{"role": "system", "content": render("destination")}, *state["messages"]]
+        )
+        for tc in getattr(ai, "tool_calls", None) or []:
+            if tc.get("name") == "get_attractions":
+                val = (tc.get("args") or {}).get("interest", "")
+                return val.strip() if isinstance(val, str) else ""
+    except Exception as exc:  # noqa: BLE001 - 툴콜 미지원 등 → 관심사 없이 전체
+        logger.warning("destination 에이전트 툴 호출 실패: %s", exc)
+    return ""
+
+
 def destination_node(state: State) -> Command:
-    """여행지 명소를 카드(destination_carousel)로."""
+    """여행지 에이전트: LLM이 사용자 취향을 보고 get_attractions(interest)를 호출하면,
+    실제 조회·필터를 적용해 명소 카드(destination_carousel)로 후처리한다.
+    """
     visited = state.get("visited", [])
     cities, raw = _resolve_destination(state)
     if not cities:
         return _card(_unsupported_msg(raw), "destination", "text", {}, visited)
     city = cities[0]
     attractions = ts.get_attractions(city)
-    payload = ts.build_destination_payload(city, attractions)
-    logger.info("destination[%s] 명소 %d개", city, len(attractions))
-    return _card(f"{city} 인기 명소를 골라봤어요 👇", "destination", "destination_carousel", payload, visited)
+    if not attractions:
+        return _card(f"{city} 명소 정보를 찾지 못했어요.", "destination", "text", {}, visited)
+
+    interest = _destination_interest(state) if get_settings().llm_enabled else ""
+    picked, note = _filter_attractions(attractions, interest, city)
+    payload = ts.build_destination_payload(city, picked)
+    if note:
+        caption = f"{note} 👇"
+    elif interest:
+        caption = f"{city} '{interest}' 명소를 골라봤어요 👇"
+    else:
+        caption = f"{city} 인기 명소를 골라봤어요 👇"
+    logger.info("destination[%s] interest=%r 명소=%d", city, interest, len(picked))
+    return _card(caption, "destination", "destination_carousel", payload, visited)
 
 
 class _RouteStep(TypedDict):
