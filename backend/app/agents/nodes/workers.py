@@ -425,6 +425,8 @@ def search_hotels(sort: str = "", region: str = "") -> str:
 
 _BOOKING_TOOLS = [search_flights, search_hotels]
 _TIME_RANGES = {"morning": (0, 12), "afternoon": (12, 18), "evening": (18, 24)}
+# 항공권만 보여준 턴 뒤, 숙소 턴으로 이어가도록 안내(항공/숙소를 턴으로 분리)
+_HOTEL_LEAD = ' 마음에 드는 항공편을 고르시고 "숙소도 보여줘"라고 하시면 숙소를 이어서 골라드릴게요. 🏨'
 _TIME_LABEL = {"morning": "오전", "afternoon": "오후", "evening": "저녁"}
 
 
@@ -511,31 +513,48 @@ def _det_caption(card_type: str, city: str, note: str) -> str:
 
 
 def _booking_fallback(state, city, trip, visited) -> Command:
-    """LLM 미설정/툴 미호출 시: focus 슬롯 기반 결정론적 검색(가격 정렬은 적용)."""
+    """LLM 미설정/툴 미호출/목표 불일치 시: focus 슬롯 기반 결정론적 검색(한 턴에 한 종류, 항공권 먼저)."""
     focus = trip.get("focus")
     sort = trip.get("sort") or ""
-    cards = []
-    if focus in (None, "", "flight"):
-        fc = _flight_card(state, city, trip, "", sort)
-        if fc:
-            cards.append(fc)
-    if focus in (None, "", "hotel"):
+    user_msg = _last_user_text(state["messages"])
+    if focus == "hotel":  # 숙소를 콕 집었을 때만 숙소 턴
+        hc = _hotel_card(city, sort)
+        return _emit_booking([hc] if hc else [], user_msg, city, visited, tag="fallback",
+                             empty_msg=_no_result_msg("hotel"))
+    # 그 외 → 항공권 먼저
+    fc = _flight_card(state, city, trip, "", sort)
+    if fc:
+        lead = _HOTEL_LEAD if not focus else ""  # 예약 첫 진입(focus 없음)이면 숙소로 이어가게 안내
+        return _emit_booking([fc], user_msg, city, visited, tag="fallback", lead=lead)
+    # 항공권 없음: 모호(focus="")면 숙소라도, 항공권을 콕 집었으면(focus=flight) 빈 결과 안내(목표 유지)
+    if not focus:
         hc = _hotel_card(city, sort)
         if hc:
-            cards.append(hc)
-    return _emit_booking(cards, _last_user_text(state["messages"]), city, visited, tag="fallback")
+            return _emit_booking([hc], user_msg, city, visited, tag="fallback")
+    return _emit_booking([], user_msg, city, visited, tag="fallback", empty_msg=_no_result_msg(focus))
 
 
-def _emit_booking(cards, user_msg, city, visited, tag) -> Command:
+def _no_result_msg(focus: str | None) -> str:
+    """검색한 종류에 맞춘 '결과 없음' 문구(조회 안 한 종류를 없다고 오안내하지 않게)."""
+    if focus == "hotel":
+        return "조건에 맞는 숙소를 찾지 못했어요."
+    if focus == "flight":
+        return "조건에 맞는 항공편을 찾지 못했어요."
+    return "조건에 맞는 항공·숙소를 찾지 못했어요."
+
+
+def _emit_booking(cards, user_msg, city, visited, tag, lead="", empty_msg="조건에 맞는 항공·숙소를 찾지 못했어요.") -> Command:
     """카드들을 캡션과 함께 supervisor로.
 
     노트(0건 폴백 등 반드시 전달할 사실)가 있는 카드는 '결정론적 캡션'으로 정확히 안내한다.
     노트 없는 대표(첫) 카드에만 LLM이 요청 맥락에 맞춘 캡션을 붙인다(맥락성 + 사실 보장 양립).
+    lead가 있으면 첫 카드 캡션 끝에 다음 단계 안내(예: 숙소 턴)를 덧붙인다.
+    empty_msg는 카드가 없을 때 문구(검색한 종류에 맞춰 호출부가 지정).
     """
     if not cards:
         return Command(
             update={
-                "messages": [AIMessage(content="조건에 맞는 항공·숙소를 찾지 못했어요.", name="booking")],
+                "messages": [AIMessage(content=empty_msg, name="booking")],
                 "visited": visited + ["booking"],
             },
             goto="supervisor",
@@ -548,6 +567,8 @@ def _emit_booking(cards, user_msg, city, visited, tag) -> Command:
     messages = []
     for i, (ct, pl, _summary, note) in enumerate(cards):
         content = llm_caption if (i == 0 and llm_caption) else _det_caption(ct, city, note)
+        if i == 0 and lead:
+            content = f"{content}{lead}"
         messages.append(
             AIMessage(content=content, name="booking", additional_kwargs={"card_type": ct, "payload": pl})
         )
@@ -590,30 +611,44 @@ def booking_node(state: State) -> Command:
 
     # 2) 에이전트가 정한 파라미터로 실제 검색·필터·정렬 → 카드 후처리
     cards = []
-    handled = 0  # 인식한(=처리한) 툴콜 수. 0이면 알 수 없는 툴만 호출된 것 → 폴백
+    ran: set[str] = set()  # 실제 실행한 툴명(재검색·오안내 방지)
     for tc in calls:
         name = tc.get("name")
         args = tc.get("args") or {}
         sort = args.get("sort", "") or trip.get("sort", "")
         if name == "search_flights":
-            handled += 1
+            ran.add(name)
             if not any(c[0] == "flight_results" for c in cards):
                 fc = _flight_card(state, city, trip, args.get("depart_time", ""), sort)
                 if fc:
                     cards.append(fc)
         elif name == "search_hotels":
-            handled += 1
+            ran.add(name)
             if not any(c[0] == "hotel_results" for c in cards):
                 hc = _hotel_card(city, sort, args.get("region", ""))
                 if hc:
                     cards.append(hc)
 
-    if handled == 0:  # 알 수 없는 툴명만 반환됨 → focus 기반 폴백(빈 결과 방지)
+    if not ran:  # 알 수 없는 툴명만 반환됨 → focus 기반 폴백(빈 결과 방지)
         logger.warning("booking[%s] 처리 가능한 툴콜 없음 → 폴백: %s", city, [c.get("name") for c in calls])
         return _booking_fallback(state, city, trip, visited)
 
-    logger.info("booking[%s] agent 툴=%s", city, [c.get("name") for c in calls])
-    return _emit_booking(cards, _last_user_text(state["messages"]), city, visited, tag="agent")
+    # 한 턴에 한 종류만: focus로 목표 타입 강제(숙소 콕 집으면 숙소, 아니면 항공권 먼저).
+    focus = trip.get("focus")
+    target = "hotel_results" if focus == "hotel" else "flight_results"
+    target_kind = "hotel" if target == "hotel_results" else "flight"  # 빈결과 문구는 '검색한 종류' 기준
+    target_tool = "search_" + ("hotels" if target_kind == "hotel" else "flights")
+    cards = [c for c in cards if c[0] == target]
+    if not cards:
+        if target_tool in ran:  # 목표 툴을 이미 실행했는데 0건 → 재검색 말고 빈 결과 안내(중복 API 방지)
+            return _emit_booking([], _last_user_text(state["messages"]), city, visited,
+                                 tag="agent", empty_msg=_no_result_msg(target_kind))
+        return _booking_fallback(state, city, trip, visited)  # 목표 툴 미실행 → 결정론적 목표 검색
+    cards = cards[:1]  # 한 턴 한 카드
+    lead = _HOTEL_LEAD if (target == "flight_results" and not focus) else ""
+
+    logger.info("booking[%s] agent 툴=%s → %s", city, [c.get("name") for c in calls], target)
+    return _emit_booking(cards, _last_user_text(state["messages"]), city, visited, tag="agent", lead=lead)
 
 
 @tool
