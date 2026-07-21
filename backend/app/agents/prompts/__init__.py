@@ -9,9 +9,14 @@
 - coordinator_router.md: 라우팅(의도 분류·슬롯 추출)
 - coordinator_chat.md  : 대화 답변
 - planner.md           : 실행 워커 선택
-- booking.md           : 예약 에이전트(툴 selection — search_flights/search_hotels)
+- destination.md       : 여행지 에이전트(툴 get_attractions — 관심사 필터)
+- booking.md           : 예약 에이전트(툴 search_flights/search_hotels)
 - booking_caption.md   : 항공·숙소 결과 캡션
-- itinerary.md / route.md / recommend.md / faq.md / places.md
+- itinerary.md         : 일정 ReAct 에이전트(툴 lookup_attractions/lookup_activities)
+- itinerary_direct.md  : 일정 폴백(툴 없이 직접 생성)
+- route.md             : 동선 ReAct 에이전트(툴 lookup_attractions + 구조화 A/B)
+- payment.md           : 결제 에이전트(툴 issue_confirmation — 예약내용·총액 추출)
+- recommend.md / faq.md / places.md
 """
 
 from app.agents.prompts.template import render

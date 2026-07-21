@@ -616,25 +616,62 @@ def booking_node(state: State) -> Command:
     return _emit_booking(cards, _last_user_text(state["messages"]), city, visited, tag="agent")
 
 
+@tool
+def issue_confirmation(summary: str = "", total: int = 0) -> str:
+    """선택한 항공·숙소 예약을 확정(발급)한다.
+
+    - summary: 예약 내용 요약(예: '대한항공 07:30 왕복 · 신라스테이 2박'). 대화에서 최종 선택한 항공/숙소를 반영.
+    - total: 결제 총액(원). 대화의 '총 …원'을 반영. 모르면 0.
+    """
+    return ""  # 실제 확정 발급은 payment_node 가 처리
+
+
+_PAYMENT_TOOLS = [issue_confirmation]
+
+
+def _payment_extract(state: State) -> tuple[str, int]:
+    """에이전트가 대화에서 예약 내용·총액을 추출(issue_confirmation 툴콜, 정규식 대신 LLM 이해). 실패 시 ('', 0)."""
+    try:
+        ai = get_llm("payment").bind_tools(_PAYMENT_TOOLS).invoke(
+            [{"role": "system", "content": render("payment")}, *state["messages"]]
+        )
+        for tc in getattr(ai, "tool_calls", None) or []:
+            if tc.get("name") == "issue_confirmation":
+                args = tc.get("args") or {}
+                summary = args.get("summary", "")
+                summary = summary.strip() if isinstance(summary, str) else ""
+                total = args.get("total", 0)
+                # 툴 시그니처가 int라 코어싱됨. bool 제외·상한 방어(0이면 호출부가 추정 폴백)
+                valid = isinstance(total, int) and not isinstance(total, bool) and 0 < total <= 100_000_000
+                return summary, total if valid else 0
+    except Exception as exc:  # noqa: BLE001 - 툴콜 미지원 등 → 추정 폴백
+        logger.warning("payment 에이전트 추출 실패: %s", exc)
+    return "", 0
+
+
 def payment_node(state: State) -> Command:
-    """더미 결제 확정서 카드(confirmation) — 프론트 ConfirmationCard 계약."""
+    """결제 에이전트: 대화에서 예약 내용·총액을 LLM으로 추출해 더미 확정서(confirmation) 카드를 발급한다.
+    영수증 숫자(확정번호·총액)는 결정론적으로 정확히 유지하고, 확정 메시지에 무엇을 예약했는지 반영한다.
+    """
     visited = state.get("visited", [])
     trip = state.get("trip") or {}
-    text = _user_text(state["messages"])  # 파싱 폴백용 (사용자 발화만)
+    text = _user_text(state["messages"])  # 추정 폴백용 (사용자 발화만)
     cities, _ = _resolve_destination(state)
-    # LLM 추출 슬롯은 범위 검증 후 사용, 아니면 발화 파싱으로 폴백
     travelers = _pos_int(trip.get("travelers"), ts.parse_people(text), 30)
     nights = _pos_int(trip.get("nights"), ts.parse_nights(text), 60)
+
+    summary, total = _payment_extract(state) if get_settings().llm_enabled else ("", 0)
+    if not total:  # 추출 실패 → 인원·박수·최저가 기반 개략 추정
+        total = ts.estimate_total(cities, travelers, nights)
     code = ts.make_confirmation()
-    title = (" + ".join(cities) if cities else "여행") + " 예약"
     payload = {
         "code": code,
-        "title": title,
+        "title": (" + ".join(cities) if cities else "여행") + " 예약",
         "dateLabel": "",  # 백엔드는 선택 날짜를 추적하지 않음 → 프론트가 로컬 선택값으로 덮어씀
-        # 개략 합계(인원·박수·최저가 반영) → 프론트가 실제 선택 합계로 덮어씀
-        # NOTE(보류): 무상태 구조라 서버측 선택 검증은 데모 스코프 밖. 프론트 선택값이 최종.
-        "total": ts.estimate_total(cities, travelers, nights),
+        # 프론트가 실제 선택 합계로 덮어씀. NOTE(보류): 무상태 구조라 서버측 선택 검증은 데모 스코프 밖.
+        "total": total,
         "method": "dummy",
         "status": "paid",
     }
-    return _card(f"💳 결제 완료! 확정번호 {code}", "payment", "confirmation", payload, visited)
+    caption = f"💳 결제 완료! {summary} 예약이 확정됐어요. 확정번호 {code}" if summary else f"💳 결제 완료! 확정번호 {code}"
+    return _card(caption, "payment", "confirmation", payload, visited)
