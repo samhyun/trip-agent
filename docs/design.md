@@ -135,7 +135,7 @@ providers/{tour_api, geoapify, liteapi, duffel}.py  ← base.Provider 규약
 목적지 영문명을 함께 추출하면, `place.resolve`가 Geoapify 지오코딩(좌표·국가·신뢰도 검증, 국내(KR)는
 차단)과 Duffel Places(공항 IATA)로 해석해 `INTL_CITIES`에 **런타임 등록**한다. 이후 명소·항공·호텔
 provider가 등록된 메타로 조회하므로, "랑카위"·"다낭" 같은 도시도 실데이터가 나온다. 결과는 프로세스
-내 캐시로 재사용된다. (LLM 지연 대응은 [`presentation.md`](presentation.md) 슬라이드 12 참고)
+내 캐시로 재사용된다.
 
 ## 5. 디렉토리 구조
 

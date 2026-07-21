@@ -10,7 +10,6 @@ LangGraph supervisor 멀티에이전트 구조.
 
 | 문서 | 내용 |
 |---|---|
-| [presentation.md](presentation.md) | **발표자료 초안** — 슬라이드 단위 구성(문제·솔루션·데모·기능·아키텍처·도전·결과·회고) + 발표 노트 |
 | [design.md](design.md) | 시스템 설계 — 아키텍처(그래프·노드), 데이터 계층, 디렉토리 구조, API, 개발 접근, 위험 |
 | [data-sources.md](data-sources.md) | 데이터 API 조사·비교·선정 — TourAPI / Geoapify / Duffel / LiteAPI, 무료 조건, provider 라우팅+폴백 |
 | [ui-design.md](ui-design.md) | Chat-first UI 디자인 러프안 — 화면 구성, 메시지 타입별 리치 카드, 대화 흐름, 컴포넌트 목록 |
@@ -42,5 +41,5 @@ LangGraph supervisor 멀티에이전트 구조.
 - [x] 목적지 자동해석(임의 해외도시) · 멀티 목적지 동선(A/B) · 명소 사진
 - [x] 호텔/항공 상세보기 · 가격/평점 정렬
 - [x] E2E 시나리오 테스트 36/36 (`backend/tests/e2e/scenarios.py`)
-- [x] 발표자료 초안 (`presentation.md`) · 데모 영상(`demo/`, 로컬·git 제외)
+- [x] 발표자료(로컬 보관, git 제외) · 데모 영상(`demo/`, 로컬·git 제외)
 - [ ] (선택) 의도분류 sLLM 파인튜닝 · 멀티도시 3곳+ UI

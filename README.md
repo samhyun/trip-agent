@@ -4,7 +4,7 @@
 예약과 (더미) 결제로 잇는 **멀티턴 여행 에이전트**. LangGraph supervisor 멀티에이전트 구조에,
 워커들은 검색 조건(시간대·정렬·지역)을 스스로 판단해 툴로 외부 API를 호출한다.
 
-> 이어드림스쿨 8주차 개인 프로젝트 · 설계: [`docs/design.md`](docs/design.md) · 발표자료: [`docs/presentation.md`](docs/presentation.md) / [`docs/presentation.pptx`](docs/presentation.pptx)
+> 이어드림스쿨 8주차 개인 프로젝트 · 설계: [`docs/design.md`](docs/design.md)
 
 ## 주요 기능
 
