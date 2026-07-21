@@ -1,5 +1,18 @@
 # Trip Agent 🧳
 
+[![Python](https://img.shields.io/badge/Python-3.12-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.139-blue.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-1.2-blue.svg?logo=langgraph&logoColor=white)](https://langchain-ai.github.io/langgraph/)
+[![LangChain](https://img.shields.io/badge/LangChain-1.3-blue.svg?logo=langchain&logoColor=white)](https://www.langchain.com/)
+[![React](https://img.shields.io/badge/React-18.3-blue.svg?logo=react&logoColor=white)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/Vite-5.4-blue.svg?logo=vite&logoColor=white)](https://vitejs.dev/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-blue.svg?logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
+[![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-blue.svg?logo=sqlalchemy&logoColor=white)](https://www.sqlalchemy.org/)
+
+![Trip Agent 데모 — 회원가입부터 결제·예약 저장까지](docs/images/demo-preview.gif)
+
+**🎬 데모 영상 원본: [demo/trip-agent-demo-v2-fast.mp4](demo/trip-agent-demo-v2-fast.mp4)** (1분 17초, 1.8배속)
+
 대화로 여행지를 좁히고 명소·항공·숙소를 검색한 뒤, 동선과 일정, 예약 내역 저장과
 더미 결제까지 이어 주는 멀티턴 여행 에이전트입니다. LangGraph 기반 supervisor 구조로
 구성했으며, 각 워커 에이전트가 검색 조건을 판단해 필요한 외부 API를 호출합니다.
@@ -21,6 +34,8 @@
 - **텍스트와 카드의 하이브리드 스트리밍**: 대화와 일정은 토큰 단위로 보여 주고, 구조화된 카드는 데이터가 완성된 뒤 한 번에 전송합니다.
 - **계정별 여행 내역 저장**: JWT 기반 회원가입과 로그인을 지원합니다. 여행·예약·결제 내역을 계정에 저장하고 다른 사용자의 데이터에는 접근할 수 없도록 소유권을 확인합니다.
 - **출처가 있는 FAQ 답변**: pgvector로 관련 문서를 검색해 답변과 출처를 함께 보여 줍니다. 임베딩 API가 없으면 키워드 검색으로 전환합니다.
+
+![여행지 추천 카드 — 조건(시기·예산·취향)에 맞춘 후보와 예상 비용·날씨](docs/images/app-main.png)
 
 ## 데이터 사용 방식
 

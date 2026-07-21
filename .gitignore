@@ -31,7 +31,8 @@ npm-debug.log*
 # Logs
 *.log
 logs/
-demo/
+demo/*
+!demo/trip-agent-demo-v2-fast.mp4
 
 # 발표자료 (로컬 보관, 저장소 비공개)
 trip_agent_presentation.pdf

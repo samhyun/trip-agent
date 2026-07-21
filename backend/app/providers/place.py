@@ -93,9 +93,15 @@ def resolve(ko: str, en: str) -> dict | None:
         return None
     # 도시명이 국가·도로·건물 등 도시 아닌 지점으로 잘못 매칭되면 거른다
     # (도시/카운티/주/구 등 지역 유형은 정상 — 랑카위=county, 세부=state).
+    # 예외: 시설(amenity)로 매칭됐지만 그 시설이 속한 주(state)/도시명이 검색어와 '완전 일치'하면
+    # 그 지역 안의 지점이라는 뜻이므로 지역으로 인정한다(발리: amenity지만 state='Bali').
     if result_type in ("street", "amenity", "building", "country"):
-        logger.info("place resolve[%s→%s] 도시 아님(type=%s) → 미등록", ko, en, result_type)
-        return None
+        query = en.strip().lower()
+        names = [n for n in ((geo.get("state") or ""), (geo.get("city") or "")) if n.strip()]
+        region_match = result_type == "amenity" and query in [n.strip().lower() for n in names]
+        if not region_match:
+            logger.info("place resolve[%s→%s] 도시 아님(type=%s, region=%r) → 미등록", ko, en, result_type, names)
+            return None
     # postcode는 일본 등에서 정상 도시도 이 유형으로 매칭된다(이시가키 등).
     # 결과의 city가 검색 영문명과 실질 일치할 때만 도시로 인정한다(무관한 도시의 우편번호 오매칭 방지).
     if result_type == "postcode":
