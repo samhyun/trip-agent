@@ -287,8 +287,14 @@ export function conversationReducer(state, action) {
     case 'STREAM_TEXT_END':
       return handleStreamTextEnd(state, action.payload, action.content)
     case 'STREAM_CARD':
-    case 'STREAM_TEXT':
-      return applyTurn({ ...dropTrailingStatus(state), streamingId: null }, action.turn)
+    case 'STREAM_TEXT': {
+      const next = applyTurn({ ...dropTrailingStatus(state), streamingId: null }, action.turn)
+      // 스트림이 아직 진행 중(STREAM_DONE 전)이므로 '답변 중' 표시를 다시 붙인다 —
+      // 중간 카드(명소 등) 뒤에 다음 메시지(일정 등)가 오는지 사용자가 알 수 있게.
+      // 단, 확정서(stage api:done)는 턴의 끝이므로 붙이지 않는다(비정상 EOF 시 잔류 방지).
+      if (next.stage === 'api:done') return next
+      return append(next, [status('Trip Agent', '이어서 준비하는 중…')])
+    }
     case 'STREAM_DONE':
       return { ...dropTrailingStatus(state), loading: false, streamingId: null }
     case 'AGENT_ERROR':
