@@ -82,7 +82,7 @@ export default function HotelResults({ payload, selectedHotel, locked = false, d
                         // 재클릭=해제 (리듀서가 id+cardKey 일치 시 토글) — 스플릿 숙소 하나만 빼는 것도 가능
                         dispatch({
                           type: 'SELECT_HOTEL',
-                          hotel: { ...hotel, cardKey: payload.cardKey || `${cityLabel}:all` },
+                          hotel: { ...hotel, cardKey: payload.cardKey || `${cityLabel}:all`, cardNights: payload.stayNights, cardStay: payload.stayLabel, cardOrder: payload.stayOrder },
                         })
                       }
                     >
@@ -98,7 +98,7 @@ export default function HotelResults({ payload, selectedHotel, locked = false, d
                           type: 'SELECT_HOTEL',
                           // cardKey: 같은 카드에선 교체, 다른 카드(스플릿 스테이 지역별)면 누적 선택.
                           // 구버전 카드(payload.cardKey 없음)는 cityLabel로 묶어 기존 단일 선택 유지.
-                          hotel: { ...hotel, cardKey: payload.cardKey || `${cityLabel}:all` },
+                          hotel: { ...hotel, cardKey: payload.cardKey || `${cityLabel}:all`, cardNights: payload.stayNights, cardStay: payload.stayLabel, cardOrder: payload.stayOrder },
                         })
                       }
                     >

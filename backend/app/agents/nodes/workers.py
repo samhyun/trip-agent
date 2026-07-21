@@ -5,6 +5,7 @@
 card_type/payload 로 전달돼 응답 turns 에 담긴다.
 """
 
+import re
 from concurrent.futures import ThreadPoolExecutor
 
 from langchain.agents import create_agent
@@ -493,11 +494,14 @@ def search_flights(depart_time: str = "", sort: str = "") -> str:
 
 
 @tool
-def search_hotels(sort: str = "", region: str = "") -> str:
-    """숙소를 검색한다.
+def search_hotels(sort: str = "", region: str = "", nights: int = 0, checkin: str = "") -> str:
+    """숙박 '구간' 하나의 숙소를 검색한다. (구간 = 며칠은 어디서/어떤 조건으로)
 
     - sort: 정렬 — 'price'(저렴한 순)|'rating'(평점순)|''(기본)
-    - region: 특정 지역/동네로 좁히고 싶을 때(없으면 '')
+    - region: 특정 지역/동네로 좁힐 때(없으면 '')
+    - nights: 이 구간의 숙박 박수. 모르면 0
+    - checkin: 이 구간의 체크인 날짜 YYYY-MM-DD — 여행 날짜에서 직접 계산해 넣어라
+      (예: 8/15 출발 3박에서 "3일차부터 서귀포" → 서귀포 checkin="2026-08-17"). 계산 불가면 ""
     """
     return ""  # 실제 실행은 booking_node 가 처리
 
@@ -566,9 +570,30 @@ def _flight_card(state, city, trip, depart_time, sort) -> tuple[str, dict, str, 
     return "flight_results", ts.build_flight_payload(data), summary, note
 
 
-def _hotel_card(city, sort, region="") -> tuple[str, dict, str, str] | None:
-    """숙소 검색+지역필터+정렬 → (card_type, payload, 요약, 노트). 결과 없으면 None.
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
+
+def _date_md(iso: str, offset: int = 0) -> str:
+    """ISO 날짜 + offset일 → 'M.D' 라벨."""
+    from datetime import datetime, timedelta
+
+    d = datetime.strptime(iso, "%Y-%m-%d") + timedelta(days=offset)
+    return f"{d.month}.{d.day}"
+
+
+def _iso_add_days(iso: str, days: int) -> str:
+    """ISO 날짜 + days일 → ISO."""
+    from datetime import datetime, timedelta
+
+    return (datetime.strptime(iso, "%Y-%m-%d") + timedelta(days=days)).strftime("%Y-%m-%d")
+
+
+def _hotel_card(city, sort, region="", stay_nights=0, checkin_iso="", segment=0) -> tuple[str, dict, str, str] | None:
+    """숙박 '구간' 하나의 숙소 검색 → (card_type, payload, 요약, 노트). 결과 없으면 None.
+
+    구간 = 에이전트가 사용자 발화에서 나눈 숙박 단위(체크인 날짜·박수·지역·조건). 같은 지역이라도
+    조건이 다르면("처음 2일 가성비, 마지막 하루 고급") 별개 구간 = 별개 카드다.
+    구간 날짜는 에이전트가 checkin으로 확정한다(프론트 선택 순서와 무관).
     지역 필터로 0건이면 숨기지 않고 도시 전체로 폴백하고 노트로 알린다(빈 카드 방지).
     """
     hotels = ts.search_hotels(city, area=region or None)
@@ -583,8 +608,17 @@ def _hotel_card(city, sort, region="") -> tuple[str, dict, str, str] | None:
     place = f"{city} {region}" if region else city
     summary = f"{place} 숙소 {len(hotels)}곳 · 정렬 {label}"
     payload = ts.build_hotel_payload(city, hotels, sort=sort)
-    # 카드 식별자 — 프론트가 '같은 카드 안에서는 교체, 다른 카드(지역)면 누적' 선택을 하기 위한 키
-    payload["cardKey"] = f"{city}:{region or 'all'}"
+    # 카드 식별자(구간 단위) — 프론트가 '같은 카드 안에서는 교체, 다른 카드(구간)면 누적' 선택을 하는 키.
+    # 같은 지역도 구간이 다르면 다른 카드이므로 구간 번호를 포함한다.
+    payload["cardKey"] = f"{city}:{region or 'all'}:{segment}"
+    if stay_nights > 0:
+        payload["stayNights"] = stay_nights
+        if checkin_iso:  # 구간 날짜를 알 때만 체크인–체크아웃 라벨 확정
+            stay = f"{_date_md(checkin_iso)}–{_date_md(checkin_iso, stay_nights)}"
+            payload["stayLabel"] = stay
+            payload["stayCheckin"] = checkin_iso  # 시간순 정렬 기준(프론트 표시 순서)
+            payload["banner"] = f"{stay} · {place} {stay_nights}박"  # 카드 배너에 '언제 어디서'를 표시
+            summary += f" · 숙박 {stay}"
     return "hotel_results", payload, summary, note
 
 
@@ -713,35 +747,79 @@ def booking_node(state: State) -> Command:
         return _booking_fallback(state, city, trip, visited)
 
     calls = getattr(ai, "tool_calls", None) or []
-    if not calls:  # 툴을 안 부르면 focus 기반 기본 검색
+    if not calls:
+        # 에이전트가 툴 대신 '질문'을 택한 경우(조건 특정화: "제주와 서귀포, 어디를 먼저 가세요?" 등)
+        # 그 질문을 그대로 사용자에게 전달한다. 질문도 없으면 focus 기반 기본 검색.
+        question = (getattr(ai, "content", "") or "").strip()
+        if question and "?" in question and len(question) < 300:  # 질문 형태만 전달(설명·환각 노출 방지)
+            return Command(
+                update={"messages": [AIMessage(content=question, name="booking")], "visited": visited + ["booking"]},
+                goto="supervisor",
+            )
         return _booking_fallback(state, city, trip, visited)
 
-    # 2) 에이전트가 정한 파라미터로 실제 검색·필터·정렬 → 카드 후처리
-    cards = []
+    # 2) 에이전트가 정한 파라미터 수집 — 숙소는 '숙박 구간' 단위(호출 순서 = 숙박 순서).
+    #    같은 지역이라도 조건이 다르면 별개 구간("처음 2일 가성비, 마지막 하루 고급").
+    flight_req = None
+    hotel_reqs: list[dict] = []  # [{region, sort, nights}] — 구간 순서 유지
     ran: set[str] = set()  # 실제 실행한 툴명(재검색·오안내 방지)
-    hotel_regions: set[str] = set()  # 숙소는 '지역이 다르면' 카드 여러 장 허용(스플릿 스테이: 제주 2일+서귀포 2일)
     for tc in calls:
         name = tc.get("name")
         args = tc.get("args") or {}
         sort = args.get("sort", "") or trip.get("sort", "")
         if name == "search_flights":
             ran.add(name)
-            if not any(c[0] == "flight_results" for c in cards):
-                fc = _flight_card(state, city, trip, args.get("depart_time", ""), sort)
-                if fc:
-                    cards.append(fc)
+            if flight_req is None:
+                flight_req = {"depart_time": args.get("depart_time", ""), "sort": sort}
         elif name == "search_hotels":
             ran.add(name)
             region = args.get("region", "")
             region = region.strip() if isinstance(region, str) else ""
-            if region not in hotel_regions and len(hotel_regions) < 3:
-                hotel_regions.add(region)
-                hc = _hotel_card(city, sort, region)
-                # 결과 cardKey 기준 중복 제거 — 없는 지역들이 전부 도시 전체(:all)로 폴백해도 카드 한 장만
-                if hc and not any(
-                    c[0] == "hotel_results" and c[1].get("cardKey") == hc[1].get("cardKey") for c in cards
-                ):
-                    cards.append(hc)
+            n = args.get("nights", 0)
+            n = n if isinstance(n, int) and not isinstance(n, bool) and 0 < n <= 30 else 0
+            checkin = args.get("checkin", "")
+            checkin = checkin.strip() if isinstance(checkin, str) and _ISO_DATE_RE.match(str(checkin).strip()) else ""
+            req = {"region": region, "sort": sort, "nights": n, "checkin": checkin}
+            if req not in hotel_reqs and len(hotel_reqs) < 5:  # 완전 동일 구간만 중복 제거
+                hotel_reqs.append(req)
+
+    # 숙박 박수 보정: 미명시 구간엔 '잔여' 박수만 균등 배분(안전망 — 보통은 에이전트가 되물어 특정).
+    # 전부 명시됐는데 합이 총 박수와 달라도 최신 발화의 명시값을 신뢰한다.
+    total_nights = trip.get("nights") or 0
+    if hotel_reqs:
+        specified = sum(r["nights"] for r in hotel_reqs)
+        flex = [r for r in hotel_reqs if not r["nights"]]
+        remain = max(total_nights - specified, 0)
+        if flex and remain:
+            base, extra = divmod(remain, len(flex))
+            for i, r in enumerate(flex):
+                r["nights"] = base + (1 if i < extra else 0)
+
+    # 구간 날짜: 에이전트가 계산한 checkin 우선. 없으면 '직전 구간 끝'에 이어붙이는 안전망
+    # (첫 구간의 기본은 여행 시작일). 에이전트가 날짜를 다 주면 이 체인은 아무것도 하지 않는다.
+    cursor = trip.get("start_date", "")
+    for r in hotel_reqs:
+        if not r["checkin"] and cursor:
+            r["checkin"] = cursor
+        if r["checkin"] and r["nights"]:
+            end = _iso_add_days(r["checkin"], r["nights"])
+            cursor = max(cursor, end)  # 전진만 — 명시 checkin이 뒤섞여도 미명시 구간에 과거 날짜를 주지 않음
+
+    # 3) 실행: 항공 → 숙소 구간들 → 카드 후처리
+    cards = []
+    if flight_req:
+        fc = _flight_card(state, city, trip, flight_req["depart_time"], flight_req["sort"])
+        if fc:
+            cards.append(fc)
+    for i, r in enumerate(hotel_reqs):
+        hc = _hotel_card(city, r["sort"], r["region"],
+                         stay_nights=r["nights"], checkin_iso=r["checkin"], segment=i)
+        if hc:
+            cards.append(hc)
+    # 프론트 표시·숙박 순서용 stayOrder = 체크인 날짜순(없는 구간은 뒤로)
+    hotel_cards = [c for c in cards if c[0] == "hotel_results" and c[1].get("stayNights")]
+    for rank, c in enumerate(sorted(hotel_cards, key=lambda c: c[1].get("stayCheckin", "9999"))):
+        c[1]["stayOrder"] = rank
 
     if not ran:  # 알 수 없는 툴명만 반환됨 → focus 기반 폴백(빈 결과 방지)
         logger.warning("booking[%s] 처리 가능한 툴콜 없음 → 폴백: %s", city, [c.get("name") for c in calls])

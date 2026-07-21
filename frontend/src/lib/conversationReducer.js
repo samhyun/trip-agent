@@ -264,8 +264,13 @@ function handleSelectFlight(state, flight) {
     flight: { ...flight, route: flight.route || `${state.trip.destination ?? '여행지'} 항공` },
   })
   if (flight.isoDate || flight.date) s = patchTrip(s, { dateLabel: dateRangeLabel(flight.isoDate || flight.date, s.trip.nights || 3) })
-  // 숙소를 먼저 골랐다가 항공을 나중에 고른 경우에도 숙소 날짜가 채워지게 재계산
-  s = patchTrip(s, { hotels: withHotelStays(s.trip.hotels, s.trip.flight) })
+  // 숙소를 먼저 골랐다가 항공을 나중에 고른 경우에도 숙소 날짜가 채워지게 재계산.
+  // 카드가 확정한 날짜 라벨이 있으면 보존(백엔드 확정이 우선), 전부 라벨이 없을 때만 채운다.
+  // 이때 순서는 백엔드 구간 순서(cardOrder)가 있으면 그걸 따른다(클릭 순서 아님).
+  if (s.trip.hotels.length && s.trip.hotels.every((h) => !h.stay)) {
+    const ordered = [...s.trip.hotels].sort((a, b) => (a.cardOrder ?? 99) - (b.cardOrder ?? 99))
+    s = patchTrip(s, { hotels: withHotelStays(ordered, s.trip.flight) })
+  }
   return patchTrip(s, { total: computeTotal(s.trip) })
 }
 
@@ -298,14 +303,34 @@ function handleSelectHotel(state, hotel) {
       ? state.trip.hotels.map((h, i) => (i === idx ? hotel : h)) // 제자리 교체(박수 배분 순서 유지)
       : [...state.trip.hotels, hotel]
   }
-  // 총 박수를 선택된 숙소들에 배분 (4박 2곳 → 2+2, 3박 2곳 → 2+1). 합계가 총 박수와 일치해야 결제액이 맞다.
+  // 숙박 박수·날짜: 카드가 검색 시점에 확정한 값(stayNights/stayLabel)을 그대로 쓴다 —
+  // 순서는 에이전트가 사용자 발화 순서로 정했으므로 '클릭 순서'와 무관하다.
+  // 확정 정보가 없는 카드(구버전/날짜 미정 흐름)에만 '잔여' 박수를 배분한다(확정 카드 훼손 금지).
   const totalNights = state.trip.nights || 3
-  if (hotels.length) {
+  const flexCount = hotels.filter((h) => !(h.cardNights > 0)).length
+  if (hotels.length && flexCount === 0) {
+    hotels = hotels.map((h) => ({ ...h, nights: h.cardNights, stay: h.cardStay || h.stay || '' }))
+    // 표시·숙박 순서는 백엔드가 확정한 구간 순서(cardOrder) — 클릭 순서와 무관
+    hotels.sort((a, b) => (a.cardOrder ?? 99) - (b.cardOrder ?? 99))
+  } else if (hotels.length && flexCount === hotels.length) {
     const base = Math.floor(totalNights / hotels.length)
     const extra = totalNights % hotels.length
     hotels = hotels.map((h, i) => ({ ...h, nights: base + (i < extra ? 1 : 0) }))
+    hotels = withHotelStays(hotels, state.trip.flight) // 폴백: 선택 순서대로 날짜 배정
+  } else if (hotels.length) {
+    // 혼합: 확정 카드는 보존, 미확정 카드엔 잔여 박수만 균등 배분(날짜 라벨은 미확정분 생략)
+    const fixedSum = hotels.reduce((s, h) => s + (h.cardNights > 0 ? h.cardNights : 0), 0)
+    const remain = Math.max(totalNights - fixedSum, 0)
+    const base = Math.floor(remain / flexCount)
+    const extra = remain % flexCount
+    let j = 0
+    hotels = hotels.map((h) =>
+      h.cardNights > 0
+        ? { ...h, nights: h.cardNights, stay: h.cardStay || h.stay || '' }
+        : { ...h, nights: base + (j++ < extra ? 1 : 0), stay: '' }
+    )
+    hotels.sort((a, b) => (a.cardOrder ?? 99) - (b.cardOrder ?? 99)) // 확정 구간 순서 우선
   }
-  hotels = withHotelStays(hotels, state.trip.flight)  // 선택 순서대로 날짜 배정
   const s = patchTrip(state, { hotels })
   return patchTrip(s, { total: computeTotal(s.trip) })
 }
