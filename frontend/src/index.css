@@ -242,6 +242,9 @@ a:hover {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  /* grid 아이템 기본 min-width:auto가 가로 스크롤 콘텐츠(명소 캐러셀)에 밀려
+     컬럼을 뷰포트 밖까지 늘리는 것 방지 — 작은 창에서 화면이 잘려 보이던 원인 */
+  min-width: 0;
   border-right: 1px solid var(--border);
 }
 
