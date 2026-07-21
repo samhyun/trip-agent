@@ -3,8 +3,9 @@
 `uvicorn app.main:app` 으로 기동한다. CORS 허용 + 라우터 등록 + 헬스 체크.
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.routes import auth_router, chat_router, details_router, trips_router
 from app.api.schemas import HealthResponse
@@ -29,6 +30,20 @@ app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(trips_router)
 app.include_router(details_router)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """미처리 예외 → 일관된 500 응답 (내부 상세는 로그에만, 클라이언트엔 노출 안 함).
+
+    HTTPException(401·404 등)은 FastAPI 기본 핸들러가 처리하므로 여기 오지 않는다.
+    스트리밍 라우트는 자체적으로 SSE error 이벤트를 내보내므로 영향받지 않는다.
+    """
+    logger.exception("처리되지 않은 예외 [%s %s]", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "일시적인 오류가 발생했어요. 잠시 후 다시 시도해 주세요."},
+    )
 
 
 @app.get("/health", response_model=HealthResponse)
