@@ -5,6 +5,8 @@
 card_type/payload 로 전달돼 응답 turns 에 담긴다.
 """
 
+from concurrent.futures import ThreadPoolExecutor
+
 from langchain.agents import create_agent
 from langchain_core.messages import AIMessage
 from langchain_core.tools import tool
@@ -305,16 +307,39 @@ def lookup_activities(city: str) -> str:
 _TRIP_TOOLS = [lookup_attractions, lookup_activities]
 
 
-def _run_route_agent(state: State, c1: str, c2: str, nights: int) -> dict | None:
-    """route ReAct 에이전트: lookup_attractions로 실제 명소 확인 + 구조화 A/B 동선 출력. 실패 시 None."""
-    task = (
-        f"방문 도시: {c1}, {c2}. 총 숙박 {nights or '미정'}박. A안은 {c1} 먼저, B안은 {c2} 먼저 방문. "
-        f"lookup_attractions로 두 도시의 실제 명소를 확인해 각 안의 활동(sub)에 반영해라."
+def _attractions_context(cities: list[str]) -> str:
+    """명소 데이터를 프롬프트 주입용 블록으로 만든다.
+
+    에이전트가 '명소 조회' 툴 라운드(LLM 호출 1회 ≈ 5~15s)를 거치지 않고 바로 생성하도록 선주입한다.
+    보통 destination 워커가 먼저 돌아 캐시가 데워져 있어 즉시 반환되고, 캐시가 비어도 여기서 직접
+    조회(도시별 병렬)하는 편이 에이전트의 툴 라운드(LLM+API)보다 항상 싸다.
+    """
+    if not cities:
+        return ""
+    with ThreadPoolExecutor(max_workers=min(4, len(cities))) as ex:
+        results = list(ex.map(ts.get_attractions, cities))
+    parts = []
+    for city, attractions in zip(cities, results):
+        if attractions:
+            names = "\n".join(f"- {a['name']}: {(a.get('desc') or '')[:50]}" for a in attractions[:8])
+            parts.append(f"[{city} 명소]\n{names}")
+    if not parts:
+        return ""
+    return (
+        "\n\n# 이미 조회된 명소 데이터\n"
+        "(아래에 있는 도시는 추가 조회 없이 이 안에서 골라 사용하고, 아래에 없는 도시만 lookup_attractions로 조회)\n"
+        + "\n\n".join(parts)
     )
+
+
+def _run_route_agent(state: State, c1: str, c2: str, nights: int) -> dict | None:
+    """route 에이전트: 선주입된 명소 데이터로 구조화 A/B 동선 출력(부족하면 툴로 추가 조회). 실패 시 None."""
+    task = f"방문 도시: {c1}, {c2}. 총 숙박 {nights or '미정'}박. A안은 {c1} 먼저, B안은 {c2} 먼저 방문."
     try:
         agent = create_agent(
             get_llm("route"), [lookup_attractions],
-            system_prompt=render("route"), response_format=_RoutePlanLLM,
+            system_prompt=render("route") + _attractions_context([c1, c2]),
+            response_format=_RoutePlanLLM,
         )
         result = agent.invoke({"messages": [*state["messages"], {"role": "user", "content": task}]})
         plan = result.get("structured_response")
@@ -361,10 +386,12 @@ def _with_booking_cta(content: str, state: State) -> str:
 
 
 def _run_itinerary_agent(state: State) -> str:
-    """itinerary ReAct 에이전트: lookup_attractions/lookup_activities로 실제 명소를 조회해 일정을
-    grounding 후 생성. 툴콜 미지원·실패 시 툴 없이 직접 생성으로 폴백."""
+    """itinerary 에이전트: 선주입된 명소 데이터(캐시)로 바로 일정을 생성한다 — grounding 유지하며
+    '명소 조회' 툴 라운드를 생략해 LLM 호출을 줄인다. 부족하면 툴로 추가 조회(액티비티·타 도시).
+    툴콜 미지원·실패 시 툴 없이 직접 생성으로 폴백."""
     try:
-        agent = create_agent(get_llm("itinerary"), _TRIP_TOOLS, system_prompt=render("itinerary"))
+        system = render("itinerary") + _attractions_context(_resolve_destinations(state))
+        agent = create_agent(get_llm("itinerary"), _TRIP_TOOLS, system_prompt=system)
         result = agent.invoke({"messages": state["messages"]})
         # 이번 실행에서 '새로 생성된' 메시지만 본다(입력 히스토리의 과거 AI 답을 일정으로 오인 방지)
         new_msgs = result.get("messages", [])[len(state["messages"]):]
