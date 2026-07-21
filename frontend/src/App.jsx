@@ -152,7 +152,8 @@ function useConversation() {
             const f = s.trip.flight
             const lines = [
               `${f.air} ${f.outDep} 항공편으로 예약할게요`,
-              ...s.trip.hotels.map((h) => `${h.name} 숙소로 예약할게요`),
+              // 숙박 날짜·지역 포함 → 예약 내역·결제 요약에 "어느 날 어디서 자는지"가 남는다
+              ...s.trip.hotels.map((h) => `${h.name}${h.stay ? ` (${h.stay}, ${h.region})` : ''} 숙소로 예약할게요`),
               `총 ${s.trip.total}원, 결제까지 진행할게요`,
             ]
             return send(lines.join('\n'))

@@ -11,7 +11,7 @@
 // 파일만 남겨두고, 런타임 기본 동작은 실 API 다.
 
 import { nextId } from './id'
-import { dateRangeLabel } from './format'
+import { addDaysLabel, dateRangeLabel } from './format'
 
 // ---------- 메시지/상태 헬퍼 ----------
 
@@ -264,7 +264,24 @@ function handleSelectFlight(state, flight) {
     flight: { ...flight, route: flight.route || `${state.trip.destination ?? '여행지'} 항공` },
   })
   if (flight.isoDate || flight.date) s = patchTrip(s, { dateLabel: dateRangeLabel(flight.isoDate || flight.date, s.trip.nights || 3) })
+  // 숙소를 먼저 골랐다가 항공을 나중에 고른 경우에도 숙소 날짜가 채워지게 재계산
+  s = patchTrip(s, { hotels: withHotelStays(s.trip.hotels, s.trip.flight) })
   return patchTrip(s, { total: computeTotal(s.trip) })
+}
+
+// 선택 순서 = 숙박 순서. 항공 출발일부터 각 숙소의 체크인–체크아웃(stay 라벨)을 이어 배정한다.
+// (스플릿 스테이에서 "어느 날 어디서 자는지"를 패널·결제·예약내역에 보여주기 위함)
+function withHotelStays(hotels, flight) {
+  const startIso = flight?.isoDate || flight?.date || null
+  let offset = 0
+  return hotels.map((h) => {
+    const nights = h.nights ?? 1
+    const stay = startIso && nights > 0
+      ? `${addDaysLabel(startIso, offset)}–${addDaysLabel(startIso, offset + nights)}`
+      : ''
+    offset += nights
+    return { ...h, stay }
+  })
 }
 
 function handleSelectHotel(state, hotel) {
@@ -288,6 +305,7 @@ function handleSelectHotel(state, hotel) {
     const extra = totalNights % hotels.length
     hotels = hotels.map((h, i) => ({ ...h, nights: base + (i < extra ? 1 : 0) }))
   }
+  hotels = withHotelStays(hotels, state.trip.flight)  // 선택 순서대로 날짜 배정
   const s = patchTrip(state, { hotels })
   return patchTrip(s, { total: computeTotal(s.trip) })
 }

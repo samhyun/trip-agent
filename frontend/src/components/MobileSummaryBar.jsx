@@ -48,7 +48,7 @@ export default function MobileSummaryBar({ trip, stage, open, onToggle, onProcee
             <div key={`${hotel.cardKey || ""}-${hotel.id}`} className="mobile-summary__item">
               <span>🏨</span>
               <span>
-                {hotel.name} · {hotel.nights}박
+                {hotel.name} · {hotel.stay || `${hotel.nights}박`}
               </span>
               <span>{won(hotel.price * hotel.nights)}</span>
             </div>

@@ -129,7 +129,7 @@ export default function TripSummaryPanel({ trip, stage, onProceed, onOpenAuth, o
                   <span className="trip-panel__item-icon">🏨</span>
                   <div className="trip-panel__item-meta">
                     <strong>{hotel.name}</strong>
-                    <span>{hotel.nights}박 · {hotel.region}</span>
+                    <span>{hotel.stay ? `${hotel.stay} · ` : ''}{hotel.nights}박 · {hotel.region}</span>
                   </div>
                   <span className="trip-panel__item-price">{won(hotel.price * hotel.nights)}</span>
                 </div>
