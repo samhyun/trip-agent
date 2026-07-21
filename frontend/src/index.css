@@ -1228,6 +1228,44 @@ a:hover {
 .itinerary-md__gap {
   height: 6px;
 }
+.itinerary-md__hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 10px 0;
+}
+.itinerary-md__table-wrap {
+  overflow-x: auto;
+  margin: 6px 0;
+}
+.itinerary-md__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.itinerary-md__table th,
+.itinerary-md__table td {
+  border: 1px solid var(--border);
+  padding: 6px 9px;
+  text-align: left;
+  white-space: nowrap;
+}
+.itinerary-md__table th {
+  background: var(--primary-weak, rgba(99, 102, 241, 0.1));
+  font-weight: 700;
+}
+.itinerary-md__table td:first-child {
+  white-space: normal;
+}
+.itinerary-md__quote {
+  margin: 6px 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--primary);
+  border-radius: 0 8px 8px 0;
+  background: var(--primary-weak, rgba(99, 102, 241, 0.07));
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
 
 /* ==================== Booking summary ==================== */
 .booking-summary__header {
