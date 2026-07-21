@@ -8,7 +8,6 @@
 """
 
 from concurrent.futures import ThreadPoolExecutor
-from urllib.parse import urlencode
 
 import httpx
 
@@ -21,7 +20,6 @@ logger = get_logger(__name__)
 
 GEOCODE_URL = "https://api.geoapify.com/v1/geocode/search"
 PLACES_URL = "https://api.geoapify.com/v2/places"
-STATICMAP_URL = "https://maps.geoapify.com/v1/staticmap"
 TIMEOUT = 5.0  # 명소 6개 직렬 조회 → 최악 지연 억제
 
 _CACHE: dict[tuple[str, int], list[dict]] = {}
@@ -141,31 +139,6 @@ def search_attractions(city: str, limit: int = 6) -> list[dict] | None:
     _CACHE[(city, limit)] = result
     return result
 
-
-def static_map_url(points: list[tuple], width: int = 640, height: int = 300) -> str | None:
-    """명소 좌표들을 마커로 찍은 Geoapify 정적 지도 URL. 좌표가 없거나 키 없으면 None.
-
-    area=rect로 모든 마커가 들어오도록 자동 맞춤(center/zoom 계산 불필요).
-    """
-    if not get_settings().has_geoapify:
-        return None
-    pts = [(la, lo) for la, lo in points if isinstance(la, (int, float)) and isinstance(lo, (int, float))]
-    if not pts:
-        return None
-    lats = [p[0] for p in pts]
-    lons = [p[1] for p in pts]
-    pad = 0.02  # 마커가 가장자리에 붙지 않도록 여백(약 2km)
-    area = f"rect:{min(lons) - pad},{min(lats) - pad},{max(lons) + pad},{max(lats) + pad}"
-    markers = "|".join(f"lonlat:{lo},{la};color:#e14b4b;size:small" for la, lo in pts)
-    params = {
-        "style": "osm-bright-smooth",
-        "width": width,
-        "height": height,
-        "area": area,
-        "markers": markers,
-        "apiKey": get_settings().geoapify_api_key,
-    }
-    return f"{STATICMAP_URL}?{urlencode(params)}"
 
 
 class GeoapifyAttractions:

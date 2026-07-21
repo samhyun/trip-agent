@@ -49,9 +49,6 @@ export default function MessageRenderer({ message, trip, stage, dispatch }) {
         {type === 'destination_carousel' && (
           <DestinationCarousel
             items={payload.items}
-            mapPath={payload.mapPath}
-            weather={payload.weather}
-            city={payload.city}
             selectedIds={trip.spots.map((s) => s.id)}
             dispatch={dispatch}
           />

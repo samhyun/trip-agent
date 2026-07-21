@@ -24,7 +24,7 @@ LangGraph supervisor 멀티에이전트 구조.
 | 워커 | destination · **route(멀티도시 동선)** · itinerary · booking · payment |
 | LLM | elice AI Cloud 티어별 (reasoning·standard·fast) · OpenAI 폴백 |
 | UI | Vite + React 챗 UI + FastAPI (리치카드 · SSE 하이브리드 스트리밍) |
-| 데이터 (전부 연동) | 국내=**TourAPI** · 해외 명소=**Geoapify** · 항공=**Duffel** · 호텔=**LiteAPI** · 날씨=**OpenWeather** · 사진=**Wikipedia** · 전구간 mock 폴백 |
+| 데이터 (전부 연동) | 국내=**TourAPI** · 해외 명소=**Geoapify** · 항공=**Duffel** · 호텔=**LiteAPI** · 사진=**Wikipedia** · 전구간 mock 폴백 |
 | 목적지 자동해석 | LLM 영문명 추출 → Geoapify(좌표·국가·신뢰도) + Duffel Places(공항) → 런타임 등록·캐시 |
 | provider 추상화 | `base.Provider` + `registry` 파사드 — 교체 시 registry만 수정 |
 | 인증·영속화 | JWT + bcrypt · 여행/예약/결제 계정 저장 · IDOR 방지 · 로그 API 키 마스킹 |
@@ -37,9 +37,9 @@ LangGraph supervisor 멀티에이전트 구조.
 - [x] 그래프·노드 구현 (coordinator·planner·supervisor + 워커 5종 + faq)
 - [x] 프론트엔드 챗 UI (리치카드 · SSE 하이브리드 스트리밍 · 상세 모달)
 - [x] DB(Postgres+pgvector) · RAG FAQ · Alembic 마이그레이션
-- [x] 실 provider 연동 — TourAPI · Geoapify · LiteAPI · Duffel · OpenWeather · Wikipedia (registry 추상화)
+- [x] 실 provider 연동 — TourAPI · Geoapify · LiteAPI · Duffel · Wikipedia (registry 추상화)
 - [x] 인증(JWT)·회원가입/로그인 · 여행/예약 계정 영속화
-- [x] 목적지 자동해석(임의 해외도시) · 멀티 목적지 동선(A/B) · 명소 사진·지도·날씨
+- [x] 목적지 자동해석(임의 해외도시) · 멀티 목적지 동선(A/B) · 명소 사진
 - [x] 호텔/항공 상세보기 · 가격/평점 정렬
 - [x] E2E 시나리오 테스트 36/36 (`backend/tests/e2e/scenarios.py`)
 - [x] 발표자료 초안 (`presentation.md`) · 데모 영상(`demo/`, 로컬·git 제외)

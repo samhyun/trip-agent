@@ -60,7 +60,6 @@ class Settings(BaseSettings):
     opentripmap_api_key: str = ""  # OpenTripMap (해외 명소, 미사용 — Geoapify로 대체)
     duffel_api_key: str = ""  # Duffel (해외 항공)
     liteapi_api_key: str = ""  # LiteAPI (해외 호텔)
-    openweather_api_key: str = ""  # OpenWeatherMap (날씨, 선택)
 
     # ----- 인증 (JWT) -----
     jwt_secret: str = "dev-secret-change-me"  # 운영에선 .env로 교체 필수
@@ -132,9 +131,6 @@ class Settings(BaseSettings):
     def has_liteapi(self) -> bool:
         return bool(self.liteapi_api_key)
 
-    @property
-    def has_openweather(self) -> bool:
-        return bool(self.openweather_api_key)
 
     def embedding_config(self) -> tuple[str, str, str]:
         """RAG 임베딩 (base_url, api_key, model)."""
