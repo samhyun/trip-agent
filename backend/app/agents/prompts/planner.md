@@ -8,8 +8,8 @@
 - payment: 결제(예약 확정)
 
 # 선택 규칙 (대화에서 '이미 무엇을 보여줬는지' 보고 필요한 것만)
-- 명소만: destination
-- 일정까지: destination, itinerary
+- **"~여행 가려고", "~갈까 해" 같은 일반 계획 요청(기본)**: destination, itinerary — 여행을 간다고 하면 명소와 함께 '일정까지' 잡아준다
+- 명소'만' 콕 집어 요청("명소 보여줘", "볼거리 뭐 있어"): destination
 - 처음부터 명소+일정+예약을 아우르면: destination, itinerary, booking
 - 여러 도시 방문이면 destination 다음에 route
 - **이미 명소·일정을 보여준 뒤** 사용자가 항공·숙소를 보여달라/예약/변경(더 싼·다른·시간대·가격순 등)하면: booking 만(destination·itinerary 재실행 금지)
