@@ -44,7 +44,7 @@ def chat(
         history.append({"role": "user", "content": request.message})
         convs.save_message(db, conv.id, "user", request.message)
 
-        result = run_agent(history, str(conv.id))
+        result = run_agent(history, str(conv.id), authenticated=current_user is not None)
 
         convs.save_message(
             db, conv.id, "assistant", result["answer"], agent=result.get("agent")
@@ -107,7 +107,7 @@ def chat_stream(
         # 2) 스트리밍 (DB 미점유)
         turns: list[dict] = []
         try:
-            for ev in stream_agent(history, str(conv_id)):
+            for ev in stream_agent(history, str(conv_id), authenticated=current_user is not None):
                 if ev.get("type") == "turns":
                     turns = ev.get("turns", [])
                     continue

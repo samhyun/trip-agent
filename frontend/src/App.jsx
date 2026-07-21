@@ -12,6 +12,7 @@ import {
   findQuickReplyOption,
 } from './lib/conversationReducer'
 import { streamChat } from './lib/api'
+import { useAuth } from './context/AuthContext'
 
 function useTheme() {
   const [theme, setTheme] = useState(() => {
@@ -176,7 +177,16 @@ export default function App() {
   const [mobileSummaryOpen, setMobileSummaryOpen] = useState(false)
   const [auth, setAuth] = useState({ open: false, tab: 'login' })
   const [bookingsOpen, setBookingsOpen] = useState(false)
+  const { user, ready } = useAuth()
   const openAuth = (tab = 'login') => setAuth({ open: true, tab })
+
+  // 결제 진행 게이트: 비로그인 상태로 결제(항공+숙소 선택 완료)로 넘어가려 하면 로그인 모달부터.
+  // ready 전(저장 토큰 복원 중)에는 오탐하지 않는다 — 그 찰나는 백엔드 payment 게이트가 방어.
+  const proceed = () => {
+    const payReady = state.trip.flight && state.trip.hotels.length > 0 && state.stage !== 'api:done'
+    if (payReady && ready && !user) return openAuth('login')
+    dispatch({ type: 'PANEL_PROCEED' })
+  }
 
   return (
     <div className="app-shell" data-theme={theme}>
@@ -191,7 +201,7 @@ export default function App() {
         stage={state.stage}
         open={mobileSummaryOpen}
         onToggle={() => setMobileSummaryOpen((v) => !v)}
-        onProceed={() => dispatch({ type: 'PANEL_PROCEED' })}
+        onProceed={proceed}
       />
       <div className="app-main">
         {bookingsOpen ? (
@@ -204,7 +214,7 @@ export default function App() {
         <TripSummaryPanel
           trip={state.trip}
           stage={state.stage}
-          onProceed={() => dispatch({ type: 'PANEL_PROCEED' })}
+          onProceed={proceed}
           onOpenAuth={openAuth}
           onOpenBookings={() => setBookingsOpen(true)}
         />

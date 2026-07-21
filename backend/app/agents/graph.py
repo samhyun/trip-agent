@@ -56,7 +56,7 @@ def build_graph():
 _graph = build_graph()
 
 
-def run_agent(messages: list[dict], conversation_id: str) -> dict:
+def run_agent(messages: list[dict], conversation_id: str, authenticated: bool = False) -> dict:
     """대화 히스토리를 그래프에 넣고 최종 응답을 뽑아낸다.
 
     Args:
@@ -66,7 +66,7 @@ def run_agent(messages: list[dict], conversation_id: str) -> dict:
     logger.info("run_agent [conv=%s] 히스토리 %d턴", conversation_id, len(messages))
     input_len = len(messages)
     result = _graph.invoke(
-        {"messages": messages},
+        {"messages": messages, "trip": {"authenticated": authenticated}},
         {"recursion_limit": 60},
     )
 
@@ -100,7 +100,7 @@ _NODE_CARD_TYPE = {"itinerary": "itinerary", "chat_reply": "text", "faq": "text"
 _SILENT_NODES = {"planner", "supervisor"}
 
 
-def stream_agent(messages: list[dict], conversation_id: str):
+def stream_agent(messages: list[dict], conversation_id: str, authenticated: bool = False):
     """그래프를 스트리밍 실행하며 이벤트(dict)를 yield.
 
     - text_start/text_delta/text_end : 텍스트 노드(chat_reply·faq) 토큰 스트리밍
@@ -113,7 +113,7 @@ def stream_agent(messages: list[dict], conversation_id: str):
     # subgraphs=True: 중첩 에이전트(itinerary의 create_agent) 내부 토큰도 수신한다.
     # 이때 각 항목은 (namespace, mode, data)이며, 중첩 토큰의 노드명은 namespace("itinerary:<id>")에서 복원한다.
     for ns, mode, data in _graph.stream(
-        {"messages": messages}, {"recursion_limit": 60},
+        {"messages": messages, "trip": {"authenticated": authenticated}}, {"recursion_limit": 60},
         stream_mode=["messages", "updates"], subgraphs=True,
     ):
         if mode == "messages":

@@ -802,9 +802,20 @@ def _payment_extract(state: State) -> tuple[str, int]:
 def payment_node(state: State) -> Command:
     """결제 에이전트: 대화에서 예약 내용·총액을 LLM으로 추출해 더미 확정서(confirmation) 카드를 발급한다.
     영수증 숫자(확정번호·총액)는 결정론적으로 정확히 유지하고, 확정 메시지에 무엇을 예약했는지 반영한다.
+    비로그인 사용자는 결제 불가 — 예약이 계정에 저장돼야 하므로 로그인 안내로 대체한다.
     """
     visited = state.get("visited", [])
     trip = state.get("trip") or {}
+
+    if not trip.get("authenticated"):  # 결제는 로그인 필수(예약·결제 내역이 계정에 저장됨)
+        ask = (
+            "결제는 로그인 후 진행할 수 있어요 — 예약 내역이 회원님 계정에 저장되거든요. "
+            "우측 패널에서 로그인 또는 회원가입하고 다시 결제해 주세요. 🔐"
+        )
+        return Command(
+            update={"messages": [AIMessage(content=ask, name="payment")], "visited": visited + ["payment"]},
+            goto="supervisor",
+        )
     text = _user_text(state["messages"])  # 추정 폴백용 (사용자 발화만)
     cities, _ = _resolve_destination(state)
     travelers = _pos_int(trip.get("travelers"), ts.parse_people(text), 30)
