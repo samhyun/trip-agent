@@ -72,13 +72,34 @@ export default function HotelResults({ payload, selectedHotel, locked = false, d
                     상세
                   </button>
                   {isSelected ? (
-                    <span className="flight-card__selected-tag">✓ 선택됨</span>
+                    <button
+                      type="button"
+                      className="flight-card__selected-tag"
+                      disabled={locked}
+                      title="선택 해제"
+                      onClick={() =>
+                        // 재클릭=해제 (리듀서가 id+cardKey 일치 시 토글) — 스플릿 숙소 하나만 빼는 것도 가능
+                        dispatch({
+                          type: 'SELECT_HOTEL',
+                          hotel: { ...hotel, cardKey: payload.cardKey || `${cityLabel}:all` },
+                        })
+                      }
+                    >
+                      ✓ 선택됨
+                    </button>
                   ) : (
                     <button
                       type="button"
                       className="hotel-card__book-btn"
                       disabled={locked}
-                      onClick={() => dispatch({ type: 'SELECT_HOTEL', hotel })}
+                      onClick={() =>
+                        dispatch({
+                          type: 'SELECT_HOTEL',
+                          // cardKey: 같은 카드에선 교체, 다른 카드(스플릿 스테이 지역별)면 누적 선택.
+                          // 구버전 카드(payload.cardKey 없음)는 cityLabel로 묶어 기존 단일 선택 유지.
+                          hotel: { ...hotel, cardKey: payload.cardKey || `${cityLabel}:all` },
+                        })
+                      }
                     >
                       {locked ? '선택 불가' : '선택'}
                     </button>

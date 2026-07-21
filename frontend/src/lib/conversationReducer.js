@@ -59,7 +59,8 @@ function disableQuickReply(state, msgId, optionId) {
 // 선택된 항공/숙소로 실시간 합계 계산 (우측 패널 즉시 갱신용)
 function computeTotal(trip) {
   const flightTotal = trip.flight ? trip.flight.price * (trip.travelers || 1) : 0
-  const hotelsTotal = trip.hotels.reduce((sum, h) => sum + h.price * (h.nights || 1), 0)
+  // nights ?? 1: 0박(숙소 수 > 총 박수 엣지)은 0원으로 — 표시 박수와 합계 일치
+  const hotelsTotal = trip.hotels.reduce((sum, h) => sum + h.price * (h.nights ?? 1), 0)
   return flightTotal + hotelsTotal
 }
 
@@ -264,10 +265,26 @@ function handleSelectFlight(state, flight) {
 }
 
 function handleSelectHotel(state, hotel) {
-  const nights = state.trip.nights || 3
-  // 같은 숙소 재클릭=해제, 아니면 교체(결제 전까지 자유롭게 바꿀 수 있게 단일 선택)
-  const already = state.trip.hotels.some((h) => h.id === hotel.id)
-  const hotels = already ? [] : [{ ...hotel, nights }]
+  // 같은 카드에서 같은 숙소 재클릭=해제 / 같은 카드(cardKey)는 제자리 교체 / 다른 카드(스플릿 지역별)는 추가.
+  // 도시 전체 카드는 cardKey가 하나라 기존 '단일 선택' 동작이 유지된다.
+  // 판정은 (id + cardKey) — 같은 숙소가 전체/지역 카드에 함께 노출돼도 카드별로 독립 선택된다.
+  const already = state.trip.hotels.some((h) => h.id === hotel.id && h.cardKey === hotel.cardKey)
+  let hotels
+  if (already) {
+    hotels = state.trip.hotels.filter((h) => !(h.id === hotel.id && h.cardKey === hotel.cardKey))
+  } else {
+    const idx = state.trip.hotels.findIndex((h) => h.cardKey === hotel.cardKey)
+    hotels = idx >= 0
+      ? state.trip.hotels.map((h, i) => (i === idx ? hotel : h)) // 제자리 교체(박수 배분 순서 유지)
+      : [...state.trip.hotels, hotel]
+  }
+  // 총 박수를 선택된 숙소들에 배분 (4박 2곳 → 2+2, 3박 2곳 → 2+1). 합계가 총 박수와 일치해야 결제액이 맞다.
+  const totalNights = state.trip.nights || 3
+  if (hotels.length) {
+    const base = Math.floor(totalNights / hotels.length)
+    const extra = totalNights % hotels.length
+    hotels = hotels.map((h, i) => ({ ...h, nights: base + (i < extra ? 1 : 0) }))
+  }
   const s = patchTrip(state, { hotels })
   return patchTrip(s, { total: computeTotal(s.trip) })
 }

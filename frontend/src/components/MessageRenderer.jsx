@@ -64,7 +64,15 @@ export default function MessageRenderer({ message, trip, stage, dispatch }) {
         {type === 'hotel_results' && (
           <HotelResults
             payload={payload}
-            selectedHotel={trip.hotels.find((h) => (payload.hotels || []).some((ph) => ph.id === h.id)) || null}
+            // 이 카드에서 고른 숙소만 '선택됨' 표시 — cardKey 우선(같은 숙소가 다른 카드에 노출돼도 독립).
+            // cardKey 없는 선택(구버전)은 id 포함 여부로 폴백.
+            selectedHotel={
+              trip.hotels.find((h) =>
+                h.cardKey
+                  ? h.cardKey === (payload.cardKey || `${payload.cityLabel}:all`)
+                  : (payload.hotels || []).some((ph) => ph.id === h.id)
+              ) || null
+            }
             locked={String(stage).endsWith(':done')}
             dispatch={dispatch}
           />

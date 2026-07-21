@@ -125,7 +125,7 @@ export default function TripSummaryPanel({ trip, stage, onProceed, onOpenAuth, o
                 </div>
               )}
               {trip.hotels.map((hotel) => (
-                <div key={hotel.id} className="trip-panel__item">
+                <div key={`${hotel.cardKey || ""}-${hotel.id}`} className="trip-panel__item">
                   <span className="trip-panel__item-icon">🏨</span>
                   <div className="trip-panel__item-meta">
                     <strong>{hotel.name}</strong>

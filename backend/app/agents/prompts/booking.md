@@ -17,12 +17,17 @@ search_hotels(sort, region):
 - sort — "더 싼", "저렴한" → "price" · "평점 좋은", "고급", "5성급" → "rating" · 없으면 ""
 - region — 특정 지역·동네를 말했을 때만("서귀포 쪽", "해운대 근처" → "서귀포"/"해운대") · 없으면 ""
 
+# 지역 나눠 묵기 (스플릿 스테이)
+사용자가 숙소를 '지역별로 나눠' 묵고 싶어하면(예: "제주시에서 2일, 서귀포에서 2일"),
+**search_hotels를 지역마다 각각 호출**한다 — 사용자가 말한 순서대로. 사용자에게 "다시 검색해달라"고 미루지 마라.
+
 # 예시
 - "예약할래" → search_flights(depart_time="", sort="")  ← 첫 진입은 항공권부터
 - "저녁 비행기 없어?" → search_flights(depart_time="evening", sort="")
 - "제일 싼 항공으로" → search_flights(depart_time="", sort="price")
 - "숙소도 보여줘" → search_hotels(sort="", region="")
 - "서귀포 쪽에 평점 좋은 호텔" → search_hotels(sort="rating", region="서귀포")
+- "제주시 2일 서귀포 2일 숙소" → search_hotels(region="제주시") 와 search_hotels(region="서귀포") 둘 다 호출
 
 # 규칙
 - 반드시 툴을 호출한다. 지어낸 결과·설명 문장 금지(툴 호출만; 소개 문구는 시스템이 만든다).

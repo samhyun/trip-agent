@@ -45,7 +45,7 @@ export default function MobileSummaryBar({ trip, stage, open, onToggle, onProcee
             </div>
           )}
           {trip.hotels.map((hotel) => (
-            <div key={hotel.id} className="mobile-summary__item">
+            <div key={`${hotel.cardKey || ""}-${hotel.id}`} className="mobile-summary__item">
               <span>🏨</span>
               <span>
                 {hotel.name} · {hotel.nights}박
