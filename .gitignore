@@ -41,3 +41,6 @@ docs/presentation.*
 
 # 윤문 도구 작업 산출물
 _workspace/
+docs/faq-rag.md
+docs/features-basic-advanced.md
+docs/slides-*.pptx
