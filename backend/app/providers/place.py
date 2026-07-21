@@ -91,11 +91,19 @@ def resolve(ko: str, en: str) -> dict | None:
         # 국내는 TourAPI가 담당(현재 제주·부산만 지원). 해외 provider로 오라우팅 방지
         logger.info("place resolve[%s→%s] 국내(KR) → 미등록", ko, en)
         return None
-    # 도시명이 국가·우편번호·도로·건물 등 도시 아닌 지점으로 잘못 매칭되면 거른다
+    # 도시명이 국가·도로·건물 등 도시 아닌 지점으로 잘못 매칭되면 거른다
     # (도시/카운티/주/구 등 지역 유형은 정상 — 랑카위=county, 세부=state).
-    if result_type in ("street", "amenity", "building", "country", "postcode"):
+    if result_type in ("street", "amenity", "building", "country"):
         logger.info("place resolve[%s→%s] 도시 아님(type=%s) → 미등록", ko, en, result_type)
         return None
+    # postcode는 일본 등에서 정상 도시도 이 유형으로 매칭된다(이시가키 등).
+    # 결과의 city가 검색 영문명과 실질 일치할 때만 도시로 인정한다(무관한 도시의 우편번호 오매칭 방지).
+    if result_type == "postcode":
+        city_name = (geo.get("city") or "").strip().lower()
+        query = en.lower()
+        if not city_name or (city_name not in query and query not in city_name):
+            logger.info("place resolve[%s→%s] 우편번호 매칭(city=%r 불일치) → 미등록", ko, en, geo.get("city"))
+            return None
     conf = (geo.get("rank") or {}).get("confidence")  # 매칭 신뢰도(정상 도시=1.0)
     if isinstance(conf, (int, float)) and conf < 0.5:
         logger.info("place resolve[%s→%s] 신뢰도 낮음(conf=%.2f) → 미등록", ko, en, conf)
