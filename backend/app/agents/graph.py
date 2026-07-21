@@ -29,7 +29,9 @@ logger = get_logger(__name__)
 
 # LLM이 자유 텍스트를 생성하는 노드 → 토큰 단위 스트리밍 대상.
 # (coordinator/planner의 구조화 출력·라우팅 텍스트는 스트리밍하지 않는다.)
-STREAM_TOKEN_NODES = {"chat_reply", "itinerary", "faq"}
+# itinerary는 ReAct 툴 에이전트(create_agent)로 실제 명소를 조회해 생성하므로 토큰 스트리밍 대신
+# 완성된 카드로 한 번에 내보낸다(중첩 에이전트 토큰은 노출하지 않음).
+STREAM_TOKEN_NODES = {"chat_reply", "faq"}
 
 
 def build_graph():
@@ -102,7 +104,7 @@ _SILENT_NODES = {"planner", "supervisor"}
 def stream_agent(messages: list[dict], conversation_id: str):
     """그래프를 스트리밍 실행하며 이벤트(dict)를 yield.
 
-    - text_start/text_delta/text_end : 텍스트 노드(chat_reply·itinerary·faq) 토큰 스트리밍
+    - text_start/text_delta/text_end : 텍스트 노드(chat_reply·faq) 토큰 스트리밍
     - card                           : 완성된 카드(명소·항공·숙소·확정) 한 번에
     - text                           : 비스트리밍 텍스트(coordinator plan 확인 등)
     - turns                          : 전체 턴 누적(DB 저장용, 마지막)

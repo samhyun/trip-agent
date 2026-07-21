@@ -5,6 +5,7 @@
 card_type/payload 로 전달돼 응답 turns 에 담긴다.
 """
 
+from langchain.agents import create_agent
 from langchain_core.messages import AIMessage
 from langchain_core.tools import tool
 from langgraph.types import Command
@@ -268,10 +269,65 @@ def _mock_route(c1: str, c2: str, nights: int = 0) -> dict:
     }
 
 
+# ── itinerary·route ReAct 에이전트가 쓰는 조회 툴 ──────────────────────────
+# create_agent(ReAct)가 직접 호출한다. 실제 명소·액티비티를 돌려줘 일정·동선을 grounding(할루시네이션 방지).
+
+
+@tool
+def lookup_attractions(city: str, interest: str = "") -> str:
+    """도시의 인기 명소를 조회한다. city=도시명(제주·부산·세부·보홀 또는 해외 도시). interest=취향(선택)."""
+    cities = ts.find_cities(city)
+    if not cities and ts.resolve_place(city, ""):
+        cities = [city]
+    if not cities:
+        return f"'{city}'는 지원하지 않는 도시예요."
+    c = cities[0]
+    picked, _ = _filter_attractions(ts.get_attractions(c), interest, c)
+    if not picked:
+        return f"{c} 명소 정보를 찾지 못했어요."
+    return f"[{c} 명소]\n" + "\n".join(f"- {a['name']}: {a.get('desc', '')[:50]}" for a in picked[:8])
+
+
+@tool
+def lookup_activities(city: str) -> str:
+    """도시의 액티비티·투어(체험 프로그램)를 조회한다."""
+    cities = ts.find_cities(city)
+    if not cities:
+        return f"'{city}' 액티비티 정보가 없어요."
+    acts = ts.search_activities(cities[0])
+    if not acts:
+        return f"{cities[0]} 액티비티 정보가 없어요."
+    return f"[{cities[0]} 액티비티]\n" + "\n".join(
+        f"- {a['name']} ({a.get('duration', '')}, {a.get('price', 0):,}원)" for a in acts
+    )
+
+
+_TRIP_TOOLS = [lookup_attractions, lookup_activities]
+
+
+def _run_route_agent(state: State, c1: str, c2: str, nights: int) -> dict | None:
+    """route ReAct 에이전트: lookup_attractions로 실제 명소 확인 + 구조화 A/B 동선 출력. 실패 시 None."""
+    task = (
+        f"방문 도시: {c1}, {c2}. 총 숙박 {nights or '미정'}박. A안은 {c1} 먼저, B안은 {c2} 먼저 방문. "
+        f"lookup_attractions로 두 도시의 실제 명소를 확인해 각 안의 활동(sub)에 반영해라."
+    )
+    try:
+        agent = create_agent(
+            get_llm("route"), [lookup_attractions],
+            system_prompt=render("route"), response_format=_RoutePlanLLM,
+        )
+        result = agent.invoke({"messages": [*state["messages"], {"role": "user", "content": task}]})
+        plan = result.get("structured_response")
+        return _route_payload(plan) if plan else None
+    except Exception as exc:  # noqa: BLE001 - 구조화/툴콜 실패 → 호출부가 mock 폴백
+        logger.warning("route 에이전트 실패: %s", exc)
+        return None
+
+
 def route_node(state: State) -> Command:
     """여러 도시 방문 시 방문 순서·이동 동선을 A/B안으로 비교(route_plan 카드).
 
-    도시가 하나뿐이면 비교가 불필요하므로 카드 없이 조용히 통과한다.
+    ReAct 에이전트가 실제 명소를 조회해 동선을 grounding한다. 도시가 하나뿐이면 조용히 통과.
     """
     visited = state.get("visited", [])
     cities = _resolve_destinations(state)
@@ -280,18 +336,11 @@ def route_node(state: State) -> Command:
     c1, c2 = cities[0], cities[1]
     nights = _pos_int((state.get("trip") or {}).get("nights"), 0, 60)
 
-    if not get_settings().llm_enabled:
+    payload = None
+    if get_settings().llm_enabled:
+        payload = _run_route_agent(state, c1, c2, nights)
+    if payload is None:  # LLM 미설정·에이전트 실패 → 결정론적 mock
         payload = _mock_route(c1, c2, nights)
-    else:
-        prompt = f"두 도시: {c1}, {c2}. 총 숙박 {nights or ''}박. A안은 {c1} 먼저, B안은 {c2} 먼저 방문."
-        try:
-            plan = get_llm("route").with_structured_output(_RoutePlanLLM).invoke(
-                [{"role": "system", "content": render("route")}, {"role": "user", "content": prompt}]
-            )
-            payload = _route_payload(plan)
-        except Exception as exc:  # noqa: BLE001 - 구조화 실패 시 mock 폴백
-            logger.warning("route 동선 생성 실패: %s", exc)
-            payload = _mock_route(c1, c2, nights)
 
     # UI는 두 도시 A/B 비교라, 3곳 이상이면 앞의 두 도시 기준임을 안내(나머지 누락 방지)
     extra = cities[2:]
@@ -311,14 +360,33 @@ def _with_booking_cta(content: str, state: State) -> str:
     return content
 
 
+def _run_itinerary_agent(state: State) -> str:
+    """itinerary ReAct 에이전트: lookup_attractions/lookup_activities로 실제 명소를 조회해 일정을
+    grounding 후 생성. 툴콜 미지원·실패 시 툴 없이 직접 생성으로 폴백."""
+    try:
+        agent = create_agent(get_llm("itinerary"), _TRIP_TOOLS, system_prompt=render("itinerary"))
+        result = agent.invoke({"messages": state["messages"]})
+        # 이번 실행에서 '새로 생성된' 메시지만 본다(입력 히스토리의 과거 AI 답을 일정으로 오인 방지)
+        new_msgs = result.get("messages", [])[len(state["messages"]):]
+        for m in reversed(new_msgs):
+            if getattr(m, "type", None) == "ai" and not getattr(m, "tool_calls", None):
+                text = (m.content or "").strip()
+                if text:
+                    return text
+    except Exception as exc:  # noqa: BLE001 - 에이전트 실패 → 툴 없이 직접 생성
+        logger.warning("itinerary 에이전트 실패 → 툴 없이 생성: %s", exc)
+    # 폴백은 툴이 없으므로 툴 언급 없는 전용 프롬프트로 직접 생성
+    r = get_llm("itinerary").invoke([{"role": "system", "content": render("itinerary_direct")}, *state["messages"]])
+    return (r.content or "").strip() or "### Day 1\n- 일정을 준비하고 있어요"
+
+
 def itinerary_node(state: State) -> Command:
-    """일자별 일정을 LLM으로 서술 (itinerary 카드). 예약 미포함 계획이면 예약 CTA를 덧붙인다."""
+    """일자별 일정을 ReAct 에이전트로 서술 (itinerary 카드). 예약 미포함 계획이면 예약 CTA를 덧붙인다."""
     visited = state.get("visited", [])
     if not get_settings().llm_enabled:
         content = _with_booking_cta("### Day 1\n- 주요 명소 관광\n\n### Day 2\n- 근교 코스 (mock)", state)
         return _card(content, "itinerary", "itinerary", {"markdown": content}, visited)
-    response = get_llm("itinerary").invoke([{"role": "system", "content": render("itinerary")}, *state["messages"]])
-    content = _with_booking_cta(response.content, state)
+    content = _with_booking_cta(_run_itinerary_agent(state), state)
     return _card(content, "itinerary", "itinerary", {"markdown": content}, visited)
 
 
