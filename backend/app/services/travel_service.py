@@ -5,6 +5,7 @@
 """
 
 import re
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 
@@ -76,8 +77,8 @@ def get_destination(city: str) -> dict | None:
     return load("destinations").get(city)
 
 
-def get_attractions(city: str) -> list[dict]:
-    """도시의 명소 목록. provider(국내 TourAPI 등) 우선, 실패/빈결과 시 mock 폴백.
+def _fetch_attractions(city: str) -> list[dict]:
+    """명소 실제 조회. provider(국내 TourAPI 등) 우선, 실패/빈결과 시 mock 폴백.
 
     라이브 성공 결과는 provider(tour_api._CACHE)가 도시별로 캐시하므로 반복 조회는 즉시.
     """
@@ -87,6 +88,42 @@ def get_attractions(city: str) -> list[dict]:
             return live
     dest = get_destination(city)
     return dest["attractions"] if dest else []
+
+
+# 선행 조회(prefetch): coordinator가 목적지를 알아낸 순간 백그라운드로 명소 조회를 시작해,
+# 뒤 단계(destination·itinerary 등)가 도착했을 땐 이미(혹은 거의) 준비돼 있게 한다.
+# 타이밍이 안 맞아도 안전: 진행 중이면 남은 시간만 기다리고(Future.result), 실패면 그 자리에서 재시도.
+_PREFETCH_POOL = ThreadPoolExecutor(max_workers=4)  # 프리워밍(도시 4곳)이 서로를 줄 세우지 않게
+_PREFETCH: dict[str, object] = {}  # 도시 → Future (소비 시 제거)
+_PREFETCH_LOCK = threading.Lock()  # check-then-set / pop 경쟁 방지
+_PREFETCH_MAX = 32  # 동적 도시 누적 상한(미소비 Future 무한 증가 방지)
+
+
+def prefetch_attractions(names: list[str]) -> None:
+    """목적지 후보들을 백그라운드로 명소 조회 시작(지원 도시만). 이미 진행 중이면 무시."""
+    for raw in names:
+        cities = find_cities(raw or "")
+        if not cities and raw in intl.INTL_CITIES:  # 자동 해석돼 등록된 해외 도시
+            cities = [raw]
+        for c in cities:
+            with _PREFETCH_LOCK:
+                if c in _PREFETCH or len(_PREFETCH) >= _PREFETCH_MAX:
+                    continue
+                _PREFETCH[c] = _PREFETCH_POOL.submit(_fetch_attractions, c)
+
+
+def get_attractions(city: str) -> list[dict]:
+    """도시의 명소 목록. 선행 조회가 진행 중이면 그 결과를 기다려 재사용(중복 API 호출 방지)."""
+    with _PREFETCH_LOCK:
+        fut = _PREFETCH.pop(city, None)
+    if fut is not None:
+        try:
+            result = fut.result()
+            if result:
+                return result
+        except Exception as exc:  # noqa: BLE001 - 선행 조회 실패 → 아래에서 직접 재시도
+            logger.warning("명소 선행 조회 실패(%s): %s", city, exc)
+    return _fetch_attractions(city)
 
 
 # ----- 항공 -----

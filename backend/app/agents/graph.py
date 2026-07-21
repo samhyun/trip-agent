@@ -29,9 +29,8 @@ logger = get_logger(__name__)
 
 # LLM이 자유 텍스트를 생성하는 노드 → 토큰 단위 스트리밍 대상.
 # (coordinator/planner의 구조화 출력·라우팅 텍스트는 스트리밍하지 않는다.)
-# itinerary는 ReAct 툴 에이전트(create_agent)로 실제 명소를 조회해 생성하므로 토큰 스트리밍 대신
-# 완성된 카드로 한 번에 내보낸다(중첩 에이전트 토큰은 노출하지 않음).
-STREAM_TOKEN_NODES = {"chat_reply", "faq"}
+# itinerary는 중첩 에이전트(create_agent)지만 subgraphs 스트림으로 내부 생성 토큰을 흘린다(타이핑 효과).
+STREAM_TOKEN_NODES = {"chat_reply", "faq", "itinerary"}
 
 
 def build_graph():
@@ -111,12 +110,18 @@ def stream_agent(messages: list[dict], conversation_id: str):
     """
     started: set[str] = set()
     turns: list[dict] = []
-    for mode, data in _graph.stream(
-        {"messages": messages}, {"recursion_limit": 60}, stream_mode=["messages", "updates"]
+    # subgraphs=True: 중첩 에이전트(itinerary의 create_agent) 내부 토큰도 수신한다.
+    # 이때 각 항목은 (namespace, mode, data)이며, 중첩 토큰의 노드명은 namespace("itinerary:<id>")에서 복원한다.
+    for ns, mode, data in _graph.stream(
+        {"messages": messages}, {"recursion_limit": 60},
+        stream_mode=["messages", "updates"], subgraphs=True,
     ):
         if mode == "messages":
             chunk, meta = data
-            node = meta.get("langgraph_node")
+            # 중첩 그래프 토큰은 네임스페이스 첫 요소가 "워커노드:실행id" — 워커 노드명으로 매핑
+            node = ns[0].split(":", 1)[0] if ns else meta.get("langgraph_node")
+            if getattr(chunk, "tool_call_chunks", None):
+                continue  # 툴 호출 라운드 청크는 노출 안 함(최종 생성 텍스트만 스트리밍)
             text = getattr(chunk, "content", "")
             if node in STREAM_TOKEN_NODES and isinstance(text, str) and text:
                 if node not in started:
@@ -125,7 +130,9 @@ def stream_agent(messages: list[dict], conversation_id: str):
                 yield {"type": "text_delta", "node": node, "text": text}
             continue
 
-        # updates
+        # updates: 최상위 그래프의 노드 업데이트만 카드/턴으로 처리(중첩 내부 업데이트는 무시)
+        if ns:
+            continue
         for node, update in (data or {}).items():
             if node in _SILENT_NODES or not isinstance(update, dict):
                 continue

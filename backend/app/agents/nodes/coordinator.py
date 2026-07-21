@@ -103,6 +103,14 @@ def coordinator_node(state: State) -> Command:
     merged_trip = {**(state.get("trip") or {}), **trip}
     logger.info("coordinator: intent=%s destination=%r", intent, merged_trip.get("destination"))
 
+    if intent == "plan":
+        # 선행 조회: 목적지를 알아낸 '지금' 명소 조회를 백그라운드로 시작 —
+        # planner·워커 LLM이 도는 동안 API가 겹쳐 돌아 뒤 단계 대기가 줄어든다(실패해도 본전).
+        from app.services import travel_service as ts  # 지연 임포트(노드→서비스 결합 최소화)
+
+        targets = list(merged_trip.get("destinations") or []) or [merged_trip.get("destination", "")]
+        ts.prefetch_attractions([t for t in targets if t])
+
     if intent == "faq":
         return Command(update={"trip": merged_trip}, goto="faq")
     if intent == "recommend":  # 목적지 미정 + 조건 있음 → 후보 여행지 카드

@@ -332,20 +332,68 @@ def _attractions_context(cities: list[str]) -> str:
     )
 
 
+def _parse_route_option(parts: list[str]) -> _RouteOption | None:
+    """'A | 라벨 | 아이콘 | 도착라벨 | 활동 | 이동 | 아이콘 | 도착라벨 | 활동 | 출국 | 하이라이트' 1행 파싱.
+
+    핵심 필드(라벨·도착라벨·활동·이동)가 비면 실패 처리(빈 카드 방지). 하이라이트에 '|'가
+    들어가 필드가 더 쪼개졌으면 나머지를 하이라이트로 도로 합친다(내용 유실 방지).
+    """
+    if len(parts) < 11:
+        return None
+    if not all(parts[i] for i in (1, 3, 4, 5, 7, 8)):  # 라벨·도착라벨·활동·이동은 필수
+        return None
+    return {
+        "label": parts[1],
+        "first": {"icon": parts[2], "arriveLabel": parts[3], "sub": parts[4]},
+        "transferLabel": parts[5],
+        "second": {"icon": parts[6], "arriveLabel": parts[7], "sub": parts[8]},
+        "endNote": parts[9],
+        "highlight": " | ".join(parts[10:]).strip(),
+    }
+
+
+def _parse_route(text: str) -> dict | None:
+    """파이프 평문 3행(A/B/C) → route_plan payload. 형식이 안 맞으면 None(호출부가 mock 폴백)."""
+    rows: dict[str, list[str]] = {}
+    for line in (text or "").splitlines():
+        parts = [p.strip() for p in line.split("|")]
+        if parts and parts[0] in ("A", "B", "C"):
+            rows[parts[0]] = parts
+    a = _parse_route_option(rows.get("A", []))
+    b = _parse_route_option(rows.get("B", []))
+    c = rows.get("C", [])
+    if not (a and b):
+        return None
+    return {
+        "routes": {"A": a, "B": b},
+        "compareStrip": {
+            "totalMove": c[1] if len(c) > 1 else "",
+            "lastDayAirport": c[2] if len(c) > 2 else "",
+        },
+    }
+
+
 def _run_route_agent(state: State, c1: str, c2: str, nights: int) -> dict | None:
-    """route 에이전트: 선주입된 명소 데이터로 구조화 A/B 동선 출력(부족하면 툴로 추가 조회). 실패 시 None."""
+    """route: 선주입된 명소 데이터로 A/B 동선을 'LLM 1콜 평문'으로 생성해 파싱. 실패 시 None.
+
+    구조화 출력(with_structured_output)은 elice에서 ~2.5배 느려(직전 측정 ~26s) 파이프 평문
+    3행으로 받아 결정론적으로 파싱한다(recommend와 동일 패턴). grounding은 선주입 데이터가 보장.
+    """
     task = f"방문 도시: {c1}, {c2}. 총 숙박 {nights or '미정'}박. A안은 {c1} 먼저, B안은 {c2} 먼저 방문."
     try:
-        agent = create_agent(
-            get_llm("route"), [lookup_attractions],
-            system_prompt=render("route") + _attractions_context([c1, c2]),
-            response_format=_RoutePlanLLM,
+        r = get_llm("route").invoke(
+            [
+                {"role": "system", "content": render("route") + _attractions_context([c1, c2])},
+                *state["messages"],
+                {"role": "user", "content": task},
+            ]
         )
-        result = agent.invoke({"messages": [*state["messages"], {"role": "user", "content": task}]})
-        plan = result.get("structured_response")
-        return _route_payload(plan) if plan else None
-    except Exception as exc:  # noqa: BLE001 - 구조화/툴콜 실패 → 호출부가 mock 폴백
-        logger.warning("route 에이전트 실패: %s", exc)
+        payload = _parse_route(r.content or "")
+        if payload is None:
+            logger.warning("route 평문 파싱 실패: %r", (r.content or "")[:120])
+        return payload
+    except Exception as exc:  # noqa: BLE001 - 실패 → 호출부가 mock 폴백
+        logger.warning("route 동선 생성 실패: %s", exc)
         return None
 
 
@@ -385,14 +433,15 @@ def _with_booking_cta(content: str, state: State) -> str:
     return content
 
 
-def _run_itinerary_agent(state: State) -> str:
+def _run_itinerary_agent(state: State, config=None) -> str:
     """itinerary 에이전트: 선주입된 명소 데이터(캐시)로 바로 일정을 생성한다 — grounding 유지하며
     '명소 조회' 툴 라운드를 생략해 LLM 호출을 줄인다. 부족하면 툴로 추가 조회(액티비티·타 도시).
+    부모 config를 중첩 호출에 전달해 내부 LLM 토큰이 스트림으로 흐르게 한다(타이핑 효과).
     툴콜 미지원·실패 시 툴 없이 직접 생성으로 폴백."""
     try:
         system = render("itinerary") + _attractions_context(_resolve_destinations(state))
         agent = create_agent(get_llm("itinerary"), _TRIP_TOOLS, system_prompt=system)
-        result = agent.invoke({"messages": state["messages"]})
+        result = agent.invoke({"messages": state["messages"]}, config)
         # 이번 실행에서 '새로 생성된' 메시지만 본다(입력 히스토리의 과거 AI 답을 일정으로 오인 방지)
         new_msgs = result.get("messages", [])[len(state["messages"]):]
         for m in reversed(new_msgs):
@@ -407,13 +456,16 @@ def _run_itinerary_agent(state: State) -> str:
     return (r.content or "").strip() or "### Day 1\n- 일정을 준비하고 있어요"
 
 
-def itinerary_node(state: State) -> Command:
-    """일자별 일정을 ReAct 에이전트로 서술 (itinerary 카드). 예약 미포함 계획이면 예약 CTA를 덧붙인다."""
+def itinerary_node(state: State, config=None) -> Command:
+    """일자별 일정을 ReAct 에이전트로 서술 (itinerary 카드). 예약 미포함 계획이면 예약 CTA를 덧붙인다.
+
+    config를 받아 중첩 에이전트에 전달한다 — 내부 LLM 토큰이 그래프 스트림으로 흘러 타이핑 효과가 난다.
+    """
     visited = state.get("visited", [])
     if not get_settings().llm_enabled:
         content = _with_booking_cta("### Day 1\n- 주요 명소 관광\n\n### Day 2\n- 근교 코스 (mock)", state)
         return _card(content, "itinerary", "itinerary", {"markdown": content}, visited)
-    content = _with_booking_cta(_run_itinerary_agent(state), state)
+    content = _with_booking_cta(_run_itinerary_agent(state, config), state)
     return _card(content, "itinerary", "itinerary", {"markdown": content}, visited)
 
 

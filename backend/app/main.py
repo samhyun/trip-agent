@@ -32,6 +32,19 @@ app.include_router(trips_router)
 app.include_router(details_router)
 
 
+@app.on_event("startup")
+def warm_attractions_cache() -> None:
+    """큐레이션 도시 명소를 서버 시작 시 백그라운드로 미리 캐시(프리워밍).
+
+    첫 사용자의 첫 계획에서도 명소 조회가 즉시 반환되게 한다. 실패해도 무해(요청 시 재조회).
+    """
+    from app.services import travel_service as ts
+
+    cities = list(ts.load("destinations").keys())
+    ts.prefetch_attractions(cities)
+    logger.info("명소 캐시 프리워밍 시작: %s", cities)
+
+
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """미처리 예외 → 일관된 500 응답 (내부 상세는 로그에만, 클라이언트엔 노출 안 함).
