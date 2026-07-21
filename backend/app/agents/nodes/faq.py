@@ -9,19 +9,13 @@ from langgraph.graph import END
 from langgraph.types import Command
 
 from app.agents.llm import get_llm
+from app.agents.prompts import render
 from app.agents.state import State
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.services import rag_service
 
 logger = get_logger(__name__)
-
-FAQ_SYSTEM = (
-    "너는 여행 서비스 'Trip Agent'의 FAQ 상담원이야. 아래 '관련 FAQ'에 담긴 내용만 근거로 답해. "
-    "FAQ에 없는 내용은 절대 지어내지 말고 '해당 내용은 확인이 어려워요'라고 안내해. "
-    "수수료·환불률·수하물·체크인 시간 같은 정책성 답변은 데모 기준이며, 실제 예약 상품·항공사·숙소 규정이 "
-    "우선함을 필요할 때 한 줄로 덧붙여. 읽기 좋게 간결한 한국어 마크다운으로 답해."
-)
 
 # 관련 FAQ가 없을 때 안내 (근거 없이 LLM에 지어내게 하지 않는다)
 _NO_FAQ_MSG = (
@@ -71,7 +65,7 @@ def faq_node(state: State) -> Command:
 
     response = get_llm("standard").invoke(
         [
-            {"role": "system", "content": FAQ_SYSTEM},
+            {"role": "system", "content": render("faq")},
             {"role": "user", "content": f"관련 FAQ:\n{context}\n\n질문: {query}"},
         ]
     )

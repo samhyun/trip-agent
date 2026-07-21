@@ -30,17 +30,13 @@ def _famous_spots(name_en: str) -> list[str]:
     구조화 출력은 이 모델에서 지연이 커(≈2.5배), 콤마 구분 평문으로 받아 파싱한다.
     """
     from app.agents.llm import get_llm  # 지연 임포트(서비스→에이전트 결합 최소화)
+    from app.agents.prompts import render
 
     if not get_settings().llm_enabled:
         return []
-    system = (
-        "List a city's 6 most famous tourist attractions for sightseeing "
-        "(landmarks, temples, beaches, parks, viewpoints; no restaurants, hotels, cafes or shops). "
-        "Reply with ONLY a comma-separated line of English place names — nothing else."
-    )
     try:
         r = get_llm("places").invoke(
-            [{"role": "system", "content": system}, {"role": "user", "content": f"City: {name_en}"}]
+            [{"role": "system", "content": render("places")}, {"role": "user", "content": f"City: {name_en}"}]
         )
         raw = (r.content or "").replace("\n", ",")
         spots = [s.strip(" .\t-•") for s in raw.split(",")]

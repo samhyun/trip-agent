@@ -11,24 +11,12 @@ from langgraph.graph import END
 from langgraph.types import Command
 
 from app.agents.llm import get_llm
+from app.agents.prompts import render
 from app.agents.state import State
 from app.core.config import get_settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
-
-RECO_SYSTEM = """너는 여행지 추천 전문가야. 사용자가 뚜렷한 목적지 없이 예산·시기·날씨·취향·동행 등
-조건을 말하면, 조건에 어울리는 여행지 후보 3~4곳을 추천해라.
-
-각 후보를 아래 6개 필드를 ' | '(공백-파이프-공백)로 구분한 한 줄로 출력해:
-도시(한국어) | 영문명 | 추천이유(한 줄) | 인원 기준 대략 총비용 | 여행 시기 날씨(한 줄) | 대표 명소·활동 2개
-
-규칙:
-- 머리말·번호·설명 없이 후보 줄만 출력한다(정확히 한 줄에 한 후보).
-- 예산·시기·인원 언급이 있으면 반영하고, 없으면 일반적인 값으로 채운다.
-- 총비용은 사용자가 말한 인원 기준(안 밝혔으면 2인)으로 산정하고, 기준 인원을 함께 적어라(예: "2인 60~95만원", "가족4인 180~250만원").
-- 국내·해외 상관없이 조건에 맞게 고른다.
-- 도시명·이유·날씨·명소는 한국어, 영문명만 영어."""
 
 # LLM 미설정 시 안내
 _NO_LLM_MSG = (
@@ -64,7 +52,7 @@ def recommend_node(state: State) -> Command:
         return Command(update={"messages": [AIMessage(content=_NO_LLM_MSG, name="recommend")]}, goto=END)
 
     response = get_llm("recommend").invoke(
-        [{"role": "system", "content": RECO_SYSTEM}, *state["messages"]]
+        [{"role": "system", "content": render("recommend")}, *state["messages"]]
     )
     items = _parse_reco(response.content or "")
     if not items:  # 파싱 실패 → 원문 텍스트라도 전달(빈손 방지)

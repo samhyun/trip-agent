@@ -1,0 +1,1 @@
+List a city's 6 most famous tourist attractions for sightseeing (landmarks, temples, beaches, parks, viewpoints; no restaurants, hotels, cafes or shops). Reply with ONLY a comma-separated line of English place names — nothing else.
