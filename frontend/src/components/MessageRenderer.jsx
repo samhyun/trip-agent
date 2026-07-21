@@ -3,6 +3,7 @@ import AgentStatus from './messages/AgentStatus'
 import QuickReplies from './messages/QuickReplies'
 import InlineForm from './messages/InlineForm'
 import DestinationCarousel from './messages/DestinationCarousel'
+import DestinationReco from './messages/DestinationReco'
 import FlightResults from './messages/FlightResults'
 import HotelResults from './messages/HotelResults'
 import RoutePlan from './messages/RoutePlan'
@@ -42,6 +43,8 @@ export default function MessageRenderer({ message, trip, stage, dispatch }) {
         {type === 'quick_replies' && <QuickReplies message={message} dispatch={dispatch} />}
 
         {type === 'inline_form' && <InlineForm message={message} dispatch={dispatch} />}
+
+        {type === 'destination_reco' && <DestinationReco payload={payload} dispatch={dispatch} />}
 
         {type === 'destination_carousel' && (
           <DestinationCarousel

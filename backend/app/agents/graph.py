@@ -18,6 +18,7 @@ from app.agents.nodes import (
     itinerary_node,
     payment_node,
     planner_node,
+    recommend_node,
     route_node,
     supervisor_node,
 )
@@ -37,6 +38,7 @@ def build_graph():
     builder.add_node("coordinator", coordinator_node)
     builder.add_node("chat_reply", chat_reply_node)
     builder.add_node("faq", faq_node)
+    builder.add_node("recommend", recommend_node)
     builder.add_node("planner", planner_node)
     builder.add_node("supervisor", supervisor_node)
     builder.add_node("destination", destination_node)

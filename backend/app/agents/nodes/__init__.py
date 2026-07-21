@@ -3,6 +3,7 @@
 from app.agents.nodes.coordinator import chat_reply_node, coordinator_node
 from app.agents.nodes.faq import faq_node
 from app.agents.nodes.planner import planner_node
+from app.agents.nodes.recommend import recommend_node
 from app.agents.nodes.supervisor import supervisor_node
 from app.agents.nodes.workers import (
     booking_node,
@@ -17,6 +18,7 @@ __all__ = [
     "chat_reply_node",
     "faq_node",
     "planner_node",
+    "recommend_node",
     "supervisor_node",
     "destination_node",
     "route_node",
