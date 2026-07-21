@@ -6,8 +6,7 @@
 
 import re
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
-from urllib.parse import urlencode
+from datetime import datetime, timedelta
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -93,23 +92,40 @@ def get_attractions(city: str) -> list[dict]:
 
 # ----- 항공 -----
 
-def search_flights(query_or_city: str) -> dict | None:
-    """도시행 날짜별 항공권. 해외는 provider(Duffel) 우선, 국내/실패 시 mock 폴백."""
+def search_flights(query_or_city: str, start_date: str | None = None) -> dict | None:
+    """도시행 날짜별 항공권. 해외는 provider(Duffel) 우선, 국내/실패 시 mock 폴백.
+
+    start_date(YYYY-MM-DD)가 있으면 사용자가 말한 여행 시작일 기준으로 날짜를 맞춘다.
+    """
     if not mock_only():
-        # 도시명 직접 조회(자동 해석 도시는 destinations.json에 없어 find_cities로 못 잡음)
-        live = registry.flights(query_or_city)
+        # 도시명 직접 조회(자동 해석 도시는 destinations.json에 없어 find_cities로 못 잡음).
+        # live(Duffel)는 start_date로 실제 출발일을 조회하므로 재정렬하지 않는다.
+        live = registry.flights(query_or_city, start_date=start_date)
         if live:
             return live
         for city in find_cities(query_or_city):
-            live = registry.flights(city)
+            live = registry.flights(city, start_date=start_date)
             if live:
                 return live
+    # mock은 고정 날짜라 시작일 기준으로 라벨만 재정렬
     flights = load("flights")
     for route_key, info in flights.items():
-        cities = route_key.split("-")
-        if any(city in query_or_city for city in cities):
-            return {"route_key": route_key, **info}
+        if any(city in query_or_city for city in route_key.split("-")):
+            return _align_flight_dates({"route_key": route_key, **info}, start_date)
     return None
+
+
+def _align_flight_dates(flights: dict, start_date: str | None) -> dict:
+    """날짜별 항공을 여행 시작일부터로 재정렬(라벨). start_date 없거나 형식 오류면 원본 유지."""
+    if not start_date:
+        return flights
+    try:
+        base = datetime.strptime(start_date, "%Y-%m-%d").date()
+    except ValueError:
+        return flights
+    dps = flights.get("date_prices", [])
+    aligned = [{**dp, "date": (base + timedelta(days=i)).isoformat()} for i, dp in enumerate(dps)]
+    return {**flights, "date_prices": aligned}
 
 
 # ----- 숙소 -----
@@ -118,7 +134,7 @@ def search_hotels(city: str, area: str | None = None) -> list[dict]:
     """도시(+지역 필터)의 숙소 목록. provider(국내 TourAPI 등) 우선, 실패/빈결과 시 mock 폴백."""
     hotels = None
     if not mock_only():
-        hotels = registry.stays(city)
+        hotels = registry.stays(city, limit=10)  # '더보기'용으로 넉넉히
     if not hotels:
         hotels = load("hotels").get(city, [])
     if area:
@@ -175,14 +191,9 @@ def build_destination_payload(city: str, attractions: list[dict]) -> dict:
         }
         for i, a in enumerate(attractions)
     ]
-    payload = {"city": city, "items": items}
-    # lat/lng가 0인 정상 좌표를 배제하지 않도록 None 검사
-    points = [(a["lat"], a["lng"]) for a in items if a.get("lat") is not None and a.get("lng") is not None]
-    # 명소 마커 지도(키는 프록시 뒤에 숨김). 날씨는 명소 카드마다 반복돼 산만해 제외 — 필요 시 별도 노출.
-    if points and get_settings().has_geoapify:
-        pts_param = ";".join(f"{la:.5f},{lo:.5f}" for la, lo in points[:20])
-        payload["mapPath"] = "/details/map?" + urlencode({"pts": pts_param})
-    return payload
+    # 지도·날씨는 명소 선택 화면에선 도움이 적어(마커 식별 어려움·반복) 제외한다.
+    # 좌표는 item에 남아 있어 이후 동선/일정에서 재사용 가능.
+    return {"city": city, "items": items}
 
 
 def build_flight_payload(flights: dict) -> dict:

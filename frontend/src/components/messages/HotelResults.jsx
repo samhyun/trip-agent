@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { won } from '../../lib/format'
 import CardThumb from './CardThumb'
 import HotelDetailModal from './HotelDetailModal'
@@ -9,8 +9,16 @@ export default function HotelResults({ payload, selectedHotel, dispatch }) {
   const locked = Boolean(selectedHotel)
   const [region, setRegion] = useState('전체')
   const [detailHotel, setDetailHotel] = useState(null)
+  // 이미 선택한 숙소가 있으면(예약 완료 상태로 재마운트) 그 항목이 보이도록 펼친 채로 시작
+  const [showAll, setShowAll] = useState(Boolean(selectedHotel))
 
+  const INITIAL = 4
+  // 선택이 마운트 후에 설정돼도 그 항목이 보이도록 펼침 동기화
+  useEffect(() => {
+    if (selectedHotel) setShowAll(true)
+  }, [selectedHotel])
   const visibleHotels = regions && region !== '전체' ? hotels.filter((h) => h.region === region) : hotels
+  const shownHotels = showAll ? visibleHotels : visibleHotels.slice(0, INITIAL)
 
   return (
     <div className="card card-lg fade-up" style={{ overflow: 'hidden' }}>
@@ -26,7 +34,9 @@ export default function HotelResults({ payload, selectedHotel, dispatch }) {
               key={r}
               type="button"
               className={`chip${r === region ? ' chip--active' : ''}`}
-              onClick={() => setRegion(r)}
+              disabled={locked}
+              style={locked ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+              onClick={() => { setRegion(r); setShowAll(false) }}
             >
               {r}
             </button>
@@ -35,7 +45,7 @@ export default function HotelResults({ payload, selectedHotel, dispatch }) {
       )}
 
       <div className="hotel-list">
-        {visibleHotels.map((hotel) => {
+        {shownHotels.map((hotel) => {
           const isSelected = selectedHotel?.id === hotel.id
           return (
             <div
@@ -82,6 +92,11 @@ export default function HotelResults({ payload, selectedHotel, dispatch }) {
           <div style={{ textAlign: 'center', color: 'var(--muted)', fontSize: 13, padding: '16px 8px' }}>
             {region} 지역에는 조건에 맞는 숙소가 없어요. 다른 지역을 선택해보세요.
           </div>
+        )}
+        {!locked && visibleHotels.length > INITIAL && (
+          <button type="button" className="show-more-btn" onClick={() => setShowAll((v) => !v)}>
+            {showAll ? '접기 ▴' : `숙소 ${visibleHotels.length - INITIAL}개 더보기 ▾`}
+          </button>
         )}
       </div>
 

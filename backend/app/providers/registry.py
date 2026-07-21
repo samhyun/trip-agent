@@ -24,6 +24,6 @@ def stays(city: str, limit: int = 6) -> Result | None:
     return first_available(STAYS, city, limit)
 
 
-def flights(city: str, limit: int = 4) -> Result | None:
-    """항공 provider 파사드 (해외 Duffel). 국내는 커버 안 함 → 호출부가 mock. 실패 시 None."""
-    return first_available(FLIGHTS, city, limit)
+def flights(city: str, limit: int = 4, start_date: str | None = None) -> Result | None:
+    """항공 provider 파사드 (해외 Duffel). start_date(YYYY-MM-DD)로 실제 출발일 조회. 실패 시 None."""
+    return first_available(FLIGHTS, city, limit, start_date=start_date)

@@ -22,9 +22,9 @@ OFFER_URL = "https://api.duffel.com/air/offer_requests"
 TIMEOUT = 40.0
 NUM_DATES = 4  # 조회할 출발일 수 (날짜별 카드용)
 DEPART_OFFSET = 30  # 오늘로부터 며칠 뒤부터
-PER_DATE = 3  # 날짜별 표시할 항공편 수
+PER_DATE = 5  # 날짜별 표시할 항공편 수 ('더보기'용으로 넉넉히)
 
-_CACHE: dict[str, dict] = {}
+_CACHE: dict[tuple[str, str], dict] = {}  # (도시, 시작일) → 결과
 
 
 def _headers() -> dict:
@@ -36,9 +36,16 @@ def _headers() -> dict:
     }
 
 
-def _dates(n: int) -> list[str]:
-    """오늘+OFFSET 부터 n일치 ISO 날짜."""
-    base = date.today() + timedelta(days=DEPART_OFFSET)
+def _dates(n: int, start: str | None = None) -> list[str]:
+    """출발일 n일치 ISO 날짜. start(YYYY-MM-DD)가 유효한 미래면 그 날부터, 아니면 오늘+OFFSET부터."""
+    base = None
+    if start:
+        try:
+            base = date.fromisoformat(start)
+        except ValueError:
+            base = None
+    if base is None or base < date.today():  # 과거·미지정 날짜 방어 (Duffel은 과거 출발일 거부)
+        base = date.today() + timedelta(days=DEPART_OFFSET)
     return [(base + timedelta(days=i)).isoformat() for i in range(n)]
 
 
@@ -79,18 +86,19 @@ def _offers(dest: str, dep_date: str) -> list[dict]:
         return []
 
 
-def search_flights(city: str, limit: int | None = None) -> dict | None:
-    """해외 도시행 날짜별 항공편을 flights 스키마로 반환."""
+def search_flights(city: str, start_date: str | None = None) -> dict | None:
+    """해외 도시행 날짜별 항공편을 flights 스키마로 반환. start_date부터의 실제 출발일을 조회."""
     meta = INTL_CITIES.get(city)
     if not meta or not meta.get("airport") or not get_settings().has_duffel:
         return None  # 공항코드 미해석(자동 해석 실패) 시 항공 조회 생략
-    if city in _CACHE:
-        return _CACHE[city]
+    cache_key = (city, start_date or "")  # 출발일별로 캐시 분리
+    if cache_key in _CACHE:
+        return _CACHE[cache_key]
 
     dest = meta["airport"]
     duration = ""
     date_prices = []
-    for dep in _dates(NUM_DATES):
+    for dep in _dates(NUM_DATES, start_date):
         offers = _offers(dest, dep)
         if not offers:
             continue
@@ -117,7 +125,7 @@ def search_flights(city: str, limit: int | None = None) -> dict | None:
         "date_prices": date_prices,
     }
     logger.info("Duffel flights[%s] %d일치", city, len(date_prices))
-    _CACHE[city] = result
+    _CACHE[cache_key] = result
     return result
 
 
@@ -129,5 +137,5 @@ class DuffelFlights:
     def supports(self, city: str) -> bool:
         return supports_intl(city) and get_settings().has_duffel
 
-    def fetch(self, city: str, limit: int | None = None) -> dict | None:
-        return search_flights(city)
+    def fetch(self, city: str, limit: int | None = None, start_date: str | None = None) -> dict | None:
+        return search_flights(city, start_date)

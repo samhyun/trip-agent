@@ -252,12 +252,22 @@ def route_node(state: State) -> Command:
     return _card(content, "route", "route_plan", payload, visited)
 
 
+def _with_booking_cta(content: str, state: State) -> str:
+    """예약 단계가 계획에 없으면 일정 끝에 예약 안내를 붙인다(예약으로 이어가기 쉽게)."""
+    if "booking" not in (state.get("plan") or []):
+        content += (
+            "\n\n---\n이 일정이 마음에 드시면 **항공·숙소 예약**도 도와드릴게요. "
+            '"항공·숙소 보여줘"라고 말씀해 주세요. ✈️🏨'
+        )
+    return content
+
+
 def itinerary_node(state: State) -> Command:
-    """일자별 일정을 LLM으로 서술 (itinerary 카드)."""
+    """일자별 일정을 LLM으로 서술 (itinerary 카드). 예약 미포함 계획이면 예약 CTA를 덧붙인다."""
     visited = state.get("visited", [])
     if not get_settings().llm_enabled:
-        mock = "### Day 1\n- 주요 명소 관광\n\n### Day 2\n- 근교 코스 (mock)"
-        return _card(mock, "itinerary", "itinerary", {"markdown": mock}, visited)
+        content = _with_booking_cta("### Day 1\n- 주요 명소 관광\n\n### Day 2\n- 근교 코스 (mock)", state)
+        return _card(content, "itinerary", "itinerary", {"markdown": content}, visited)
     system = (
         "너는 여행 일정·동선 설계 전문가야. 대화의 목적지와 기간(며칠/몇 박)을 파악해 Day별 일정표를 짜라. "
         "사용자가 고른 명소가 대화에 있으면 반영하고, 없으면 그 목적지의 인기 명소로 채워라. "
@@ -266,7 +276,8 @@ def itinerary_node(state: State) -> Command:
         "'### Day 1', '### Day 2' 형식으로 각 날의 오전·오후·저녁 활동과 이동을 간결히 적어라. 한국어로."
     )
     response = get_llm("itinerary").invoke([{"role": "system", "content": system}, *state["messages"]])
-    return _card(response.content, "itinerary", "itinerary", {"markdown": response.content}, visited)
+    content = _with_booking_cta(response.content, state)
+    return _card(content, "itinerary", "itinerary", {"markdown": content}, visited)
 
 
 def booking_node(state: State) -> Command:
@@ -282,8 +293,9 @@ def booking_node(state: State) -> Command:
             goto="supervisor",
         )
     city = cities[0]
-    sort = (state.get("trip") or {}).get("sort")  # 'price' | 'rating' | None
-    flights = ts.search_flights(city)
+    trip = state.get("trip") or {}
+    sort = trip.get("sort")  # 'price' | 'rating' | None
+    flights = ts.search_flights(city, start_date=trip.get("start_date"))  # 사용자가 말한 여행일 반영
     hotels = ts.search_hotels(city)
 
     messages = []

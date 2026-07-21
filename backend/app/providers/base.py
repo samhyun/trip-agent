@@ -34,17 +34,17 @@ class Provider(Protocol):
         ...
 
 
-def first_available(providers: list[Provider], city: str, limit: int) -> Result | None:
+def first_available(providers: list[Provider], city: str, limit: int, **kwargs) -> Result | None:
     """등록 순서(=우선순위)대로 supports→fetch를 시도해 첫 유효 결과를 반환.
 
     supports가 False면 건너뛰고, fetch가 예외/None/빈결과면 다음 provider로.
-    모두 실패하면 None(호출부가 mock으로 폴백).
+    모두 실패하면 None(호출부가 mock으로 폴백). kwargs는 provider별 추가 인자(예: 항공 start_date).
     """
     for provider in providers:
         if not provider.supports(city):
             continue
         try:
-            result = provider.fetch(city, limit)
+            result = provider.fetch(city, limit, **kwargs)
         except Exception as exc:  # noqa: BLE001 - provider 실패는 다음 provider/mock로 흡수
             logger.warning("provider %s fetch 실패(%s): %s", provider.name, city, redact(exc))
             continue

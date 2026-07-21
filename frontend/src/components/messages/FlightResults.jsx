@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { won } from '../../lib/format'
 import FlightDetailModal from './FlightDetailModal'
 
@@ -55,7 +55,17 @@ export default function FlightResults({ payload, selectedFlight, dispatch }) {
   const lowestKey = dates?.find((d) => d.low)?.key ?? dates?.[0]?.key
   const [selectedDate, setSelectedDate] = useState(selectedFlight?.date ?? lowestKey)
   const [detailFlight, setDetailFlight] = useState(null)
+  // 이미 선택한 항공편이 있으면(예약 완료 재마운트) 그 항목이 보이도록 펼친 채로 시작
+  const [showAll, setShowAll] = useState(Boolean(selectedFlight))
   const route = payload.route
+  const INITIAL = 3
+  // 선택이 마운트 후에 설정돼도 그 항목·날짜가 보이도록 동기화
+  useEffect(() => {
+    if (selectedFlight) {
+      setShowAll(true)
+      if (selectedFlight.date) setSelectedDate(selectedFlight.date)
+    }
+  }, [selectedFlight])
 
   const selectFlight = (item, date, wd, isoDate) => {
     if (locked) return
@@ -65,6 +75,7 @@ export default function FlightResults({ payload, selectedFlight, dispatch }) {
   if (mode === 'byDate') {
     const activeDate = dates.find((d) => d.key === selectedDate) ?? dates[0]
     const flights = flightsByDate[activeDate.key] ?? []
+    const shownFlights = showAll ? flights : flights.slice(0, INITIAL)
 
     return (
       <div className="fade-up" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -79,7 +90,7 @@ export default function FlightResults({ payload, selectedFlight, dispatch }) {
                 key={d.key}
                 type="button"
                 className={`date-pill${d.key === activeDate.key ? ' date-pill--active' : ''}`}
-                onClick={() => setSelectedDate(d.key)}
+                onClick={() => { setSelectedDate(d.key); setShowAll(false) }}
                 disabled={locked && d.key !== selectedFlight?.date}
               >
                 <span className="date-pill__wd">{d.wd}</span>
@@ -98,7 +109,7 @@ export default function FlightResults({ payload, selectedFlight, dispatch }) {
           <span style={{ fontSize: 12, color: 'var(--muted)' }}>항공편</span>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-          {flights.map((item) => (
+          {shownFlights.map((item) => (
             <FlightCard
               key={`${item.air}-${item.dep}`}
               item={item}
@@ -108,6 +119,11 @@ export default function FlightResults({ payload, selectedFlight, dispatch }) {
               onDetail={() => setDetailFlight(item)}
             />
           ))}
+          {!locked && flights.length > INITIAL && (
+            <button type="button" className="show-more-btn" onClick={() => setShowAll((v) => !v)}>
+              {showAll ? '접기 ▴' : `항공편 ${flights.length - INITIAL}개 더보기 ▾`}
+            </button>
+          )}
         </div>
         {detailFlight && <FlightDetailModal flight={detailFlight} route={route} onClose={() => setDetailFlight(null)} />}
       </div>
