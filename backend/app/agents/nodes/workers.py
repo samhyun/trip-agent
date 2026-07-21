@@ -688,6 +688,18 @@ def booking_node(state: State) -> Command:
     city = cities[0]
     trip = state.get("trip") or {}
 
+    # 항공 검색엔 출발일이 필수 — 사용자가 날짜를 말한 적 없으면 지어내지 말고 묻는다.
+    # (숙소만 원하는 턴(focus=hotel)은 날짜 없이 진행 가능)
+    if trip.get("focus") != "hotel" and not trip.get("start_date"):
+        ask = (
+            "항공권을 찾으려면 출발 날짜가 필요해요. 언제 떠나실 예정인가요? "
+            '(예: "8월 15일부터 2박 3일")'
+        )
+        return Command(
+            update={"messages": [AIMessage(content=ask, name="booking")], "visited": visited + ["booking"]},
+            goto="supervisor",
+        )
+
     if not get_settings().llm_enabled:
         return _booking_fallback(state, city, trip, visited)
 

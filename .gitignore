@@ -36,3 +36,6 @@ demo/
 # 발표자료 (로컬 보관, 저장소 비공개)
 trip_agent_presentation.pdf
 docs/presentation.*
+
+# 윤문 도구 작업 산출물
+_workspace/
