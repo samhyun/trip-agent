@@ -311,7 +311,7 @@ def booking_node(state: State) -> Command:
             )
         )
     if hotels:
-        note = "가격 낮은순으로 정렬했어요." if sort == "price" else "마음에 드는 곳을 예약해 주세요."
+        note = "가격 낮은순으로 정렬했어요." if sort == "price" else "마음에 드는 곳을 골라주세요."
         messages.append(
             AIMessage(
                 content=f"{city} 숙소 옵션이에요. {note} 🏨",

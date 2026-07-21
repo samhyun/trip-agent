@@ -5,8 +5,8 @@ function statusInfo(stage, trip) {
   if (stage === 'welcome') return null
   if (stage.endsWith(':done')) return { label: '예약 확정', done: true }
   if (trip.hotels.length > 0 && trip.flight) return { label: '결제 대기', done: false }
-  if (trip.flight) return { label: '항공 예약됨', done: false }
-  return { label: '예약 대기', done: false }
+  if (trip.flight) return { label: '항공 선택됨', done: false }
+  return { label: '선택 대기', done: false }
 }
 
 // 게스트 CTA / 로그인 환영 (패널 상단)
@@ -105,7 +105,7 @@ export default function TripSummaryPanel({ trip, stage, onProceed, onOpenAuth, o
 
             <div className="trip-panel__divider" />
             <div>
-              <span className="trip-panel__section-label">예약 항목</span>
+              <span className="trip-panel__section-label">선택 항목</span>
               {trip.flight ? (
                 <div className="trip-panel__item">
                   <span className="trip-panel__item-icon">✈️</span>
@@ -150,7 +150,7 @@ export default function TripSummaryPanel({ trip, stage, onProceed, onOpenAuth, o
           <span className="trip-panel__total-value">{won(trip.total)}</span>
         </div>
         <button type="button" className="btn btn-accent btn-block" disabled={empty} onClick={onProceed}>
-          {isDone ? '새 여행 시작' : '예약 진행 →'}
+          {isDone ? '새 여행 시작' : trip.flight && trip.hotels.length > 0 ? '결제 진행 →' : '항공·숙소 보기 →'}
         </button>
         {!empty && !isDone && <div className="trip-panel__hint">👆 버튼 또는 💬 채팅 입력으로 진행</div>}
       </div>

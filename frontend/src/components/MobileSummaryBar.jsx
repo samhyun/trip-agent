@@ -55,7 +55,7 @@ export default function MobileSummaryBar({ trip, stage, open, onToggle, onProcee
           ))}
 
           <button type="button" className="btn btn-accent btn-block" onClick={onProceed}>
-            {isDone ? '새 여행 시작' : '예약 진행 →'}
+            {isDone ? '새 여행 시작' : trip.flight && trip.hotels.length > 0 ? '결제 진행 →' : '항공·숙소 보기 →'}
           </button>
         </div>
       )}

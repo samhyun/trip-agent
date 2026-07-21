@@ -40,7 +40,7 @@ function FlightCard({ item, selected, locked, onSelect, onDetail }) {
             <span className="flight-card__selected-tag">✓ 선택됨</span>
           ) : (
             <button type="button" className="flight-card__select-btn" disabled={locked} onClick={onSelect}>
-              {locked ? '예약 완료' : '예약'}
+              {locked ? '선택 불가' : '선택'}
             </button>
           )}
         </div>
@@ -49,9 +49,9 @@ function FlightCard({ item, selected, locked, onSelect, onDetail }) {
   )
 }
 
-export default function FlightResults({ payload, selectedFlight, dispatch }) {
+export default function FlightResults({ payload, selectedFlight, locked = false, dispatch }) {
   const { mode, dates, flightsByDate, options } = payload
-  const locked = Boolean(selectedFlight)
+  // locked = 결제 완료(그 전엔 자유롭게 변경/재선택 가능)
   const lowestKey = dates?.find((d) => d.low)?.key ?? dates?.[0]?.key
   const [selectedDate, setSelectedDate] = useState(selectedFlight?.date ?? lowestKey)
   const [detailFlight, setDetailFlight] = useState(null)

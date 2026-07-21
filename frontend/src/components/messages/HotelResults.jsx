@@ -3,10 +3,10 @@ import { won } from '../../lib/format'
 import CardThumb from './CardThumb'
 import HotelDetailModal from './HotelDetailModal'
 
-export default function HotelResults({ payload, selectedHotel, dispatch }) {
+export default function HotelResults({ payload, selectedHotel, locked = false, dispatch }) {
   const { banner, regions, hotels, cityLabel } = payload
   const city = payload.city || cityLabel
-  const locked = Boolean(selectedHotel)
+  // locked = 결제 완료(그 전엔 자유롭게 변경/재선택 가능)
   const [region, setRegion] = useState('전체')
   const [detailHotel, setDetailHotel] = useState(null)
   // 이미 선택한 숙소가 있으면(예약 완료 상태로 재마운트) 그 항목이 보이도록 펼친 채로 시작
@@ -80,7 +80,7 @@ export default function HotelResults({ payload, selectedHotel, dispatch }) {
                       disabled={locked}
                       onClick={() => dispatch({ type: 'SELECT_HOTEL', hotel })}
                     >
-                      {locked ? '예약 완료' : '예약'}
+                      {locked ? '선택 불가' : '선택'}
                     </button>
                   )}
                 </div>

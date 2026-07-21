@@ -265,7 +265,9 @@ function handleSelectFlight(state, flight) {
 
 function handleSelectHotel(state, hotel) {
   const nights = state.trip.nights || 3
-  const hotels = [...state.trip.hotels, { ...hotel, nights }]
+  // 같은 숙소 재클릭=해제, 아니면 교체(결제 전까지 자유롭게 바꿀 수 있게 단일 선택)
+  const already = state.trip.hotels.some((h) => h.id === hotel.id)
+  const hotels = already ? [] : [{ ...hotel, nights }]
   const s = patchTrip(state, { hotels })
   return patchTrip(s, { total: computeTotal(s.trip) })
 }

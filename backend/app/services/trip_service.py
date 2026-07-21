@@ -21,6 +21,7 @@ logger = get_logger(__name__)
 # 프론트 선택 발화 패턴 (App.jsx dispatch). 라인 경계로 다른 메시지 침범 방지.
 _FLIGHT_RE = re.compile(r"([^\n]{1,40}?)\s+(\d{1,2}:\d{2})\s*항공편으로\s*예약")
 _HOTEL_RE = re.compile(r"([^\n]{1,60}?)\s*숙소로\s*예약")
+_TOTAL_RE = re.compile(r"총\s*([\d,]+)\s*원")  # 결제 발화의 실제 선택 합계
 
 
 def _to_decimal(v) -> Decimal:
@@ -98,12 +99,16 @@ def record_booking(
                 )
             )
 
+    # 결제 금액: 결제 발화의 실제 선택 합계를 우선(화면 표시와 일치). 일정 예산표 등 앞선 '총 …원'에
+    # 오염되지 않도록 **마지막** 일치값을 쓴다. 없으면 확정서 추정값.
+    totals = _TOTAL_RE.findall(history_text)
+    amount = _to_decimal(totals[-1].replace(",", "")) if totals else _to_decimal(payload.get("total"))
     # 결제 (confirmation_no 유니크)
     db.add(
         Payment(
             trip_id=trip.id,
             user_id=user_id,
-            amount=_to_decimal(payload.get("total")),
+            amount=amount,
             confirmation_no=payload.get("code"),
             method="dummy",
             status="paid",

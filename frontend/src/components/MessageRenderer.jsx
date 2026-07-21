@@ -58,13 +58,14 @@ export default function MessageRenderer({ message, trip, stage, dispatch }) {
         )}
 
         {type === 'flight_results' && (
-          <FlightResults payload={payload} selectedFlight={trip.flight} dispatch={dispatch} />
+          <FlightResults payload={payload} selectedFlight={trip.flight} locked={String(stage).endsWith(':done')} dispatch={dispatch} />
         )}
 
         {type === 'hotel_results' && (
           <HotelResults
             payload={payload}
             selectedHotel={trip.hotels.find((h) => (payload.hotels || []).some((ph) => ph.id === h.id)) || null}
+            locked={String(stage).endsWith(':done')}
             dispatch={dispatch}
           />
         )}

@@ -99,8 +99,10 @@ function useConversation() {
   const dispatch = useCallback(
     (action) => {
       const s = stateRef.current
-      // 요청 처리 중에는 순수 로컬 미리보기(동선 미리보기·명소 담기) 외 모든 카드 액션을 잠근다
-      if (busy.current && action.type !== 'SELECT_ROUTE_PREVIEW' && action.type !== 'TOGGLE_SPOT') {
+      // 요청 처리 중에는 결제 금액에 영향 없는 로컬 미리보기(동선·명소 담기)만 허용.
+      // 항공·숙소 선택은 잠근다 — 결제 요청 중 변경 시 저장액과 화면이 어긋나는 레이스 방지.
+      const LOCAL_PREVIEW = ['SELECT_ROUTE_PREVIEW', 'TOGGLE_SPOT']
+      if (busy.current && !LOCAL_PREVIEW.includes(action.type)) {
         return undefined
       }
       switch (action.type) {
@@ -121,13 +123,12 @@ function useConversation() {
           return raw({ type: 'TOGGLE_SPOT', spot: item })
         }
 
+        // 항공·숙소 선택은 로컬 상태만 바꾼다(에이전트 호출 없음) → 결제 전까지 자유롭게 바꾸고 이어서 선택
         case 'SELECT_FLIGHT':
-          raw(action)
-          return send(`${action.flight.air} ${action.flight.dep} 항공편으로 예약할게요`)
+          return raw(action)
 
         case 'SELECT_HOTEL':
-          raw(action)
-          return send(`${action.hotel.name} 숙소로 예약할게요`)
+          return raw(action)
 
         case 'SELECT_ROUTE_PREVIEW':
           return raw(action)
@@ -137,7 +138,16 @@ function useConversation() {
 
         case 'PANEL_PROCEED': {
           if (s.stage === 'api:done') return reset()
-          if (s.trip.flight && s.trip.hotels.length > 0) return send('결제까지 진행할게요')
+          // 항공·숙소를 골랐으면 결제로 진행 — 로컬 선택 내역을 파싱 가능한 형식으로 함께 보내 저장되게 한다
+          if (s.trip.flight && s.trip.hotels.length > 0) {
+            const f = s.trip.flight
+            const lines = [
+              `${f.air} ${f.dep} 항공편으로 예약할게요`,
+              ...s.trip.hotels.map((h) => `${h.name} 숙소로 예약할게요`),
+              `총 ${s.trip.total}원, 결제까지 진행할게요`,
+            ]
+            return send(lines.join('\n'))
+          }
           if (s.trip.destination) return send('항공·숙소 예약 진행해줘')
           return undefined
         }
