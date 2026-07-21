@@ -1,13 +1,13 @@
-# Trip Agent 🧳
+# Trip Agent
 
-[![Python](https://img.shields.io/badge/Python-3.12-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.139-blue.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![LangGraph](https://img.shields.io/badge/LangGraph-1.2-blue.svg?logo=langgraph&logoColor=white)](https://langchain-ai.github.io/langgraph/)
-[![LangChain](https://img.shields.io/badge/LangChain-1.3-blue.svg?logo=langchain&logoColor=white)](https://www.langchain.com/)
-[![React](https://img.shields.io/badge/React-18.3-blue.svg?logo=react&logoColor=white)](https://react.dev/)
-[![Vite](https://img.shields.io/badge/Vite-5.4-blue.svg?logo=vite&logoColor=white)](https://vitejs.dev/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-blue.svg?logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
-[![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-blue.svg?logo=sqlalchemy&logoColor=white)](https://www.sqlalchemy.org/)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.139-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C?style=flat-square&logo=langgraph&logoColor=white)](https://langchain-ai.github.io/langgraph/)
+[![LangChain](https://img.shields.io/badge/LangChain-1.3-1C3C3C?style=flat-square&logo=langchain&logoColor=white)](https://www.langchain.com/)
+[![React](https://img.shields.io/badge/React-18.3-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/Vite-5.4-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vitejs.dev/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
+[![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-D71F00?style=flat-square&logo=sqlalchemy&logoColor=white)](https://www.sqlalchemy.org/)
 
 ![Trip Agent 데모 — 회원가입부터 결제·예약 저장까지](docs/images/demo-preview.gif)
 
@@ -43,33 +43,39 @@
 사용합니다. 에이전트가 대화를 해석하고 계획을 세우려면 elice AI Cloud 또는 OpenAI API 키가
 필요합니다.
 
-| 설정 | 동작 |
-|---|---|
-| LLM 키 + 데이터 API 키 | 외부 API를 먼저 호출하고, 실패한 데이터만 mock으로 대체 |
-| LLM 키만 설정 | 대화와 계획은 LLM이 처리하고 명소·항공·숙소는 mock 사용 |
+
+| 설정                   | 동작                                     |
+| -------------------- | -------------------------------------- |
+| LLM 키 + 데이터 API 키    | 외부 API를 먼저 호출하고, 실패한 데이터만 mock으로 대체    |
+| LLM 키만 설정            | 대화와 계획은 LLM이 처리하고 명소·항공·숙소는 mock 사용    |
 | `USE_MOCK_ONLY=true` | LLM과 외부 API를 모두 끄고 인사 응답만 확인하는 오프라인 모드 |
 
-| 데이터 | 공급자 | 비고 |
-|---|---|---|
-| 국내 명소·숙소 | [한국관광공사 TourAPI](https://www.data.go.kr/data/15101578/openapi.do) | 명소 이미지 포함 |
-| 해외 명소 | [Geoapify](https://www.geoapify.com/places-api/) | 좌표·주소 조회 |
-| 해외 명소 사진 | [Wikipedia](https://www.wikipedia.org/) | 대표 사진이 없으면 그라디언트로 대체 |
-| 해외 항공 | [Duffel](https://duffel.com/) | 테스트 모드의 왕복 항공편 |
-| 해외 호텔 | [LiteAPI](https://www.liteapi.travel/) | 샌드박스 환경 |
+
+
+| 데이터      | 공급자                                                               | 비고                   |
+| -------- | ----------------------------------------------------------------- | -------------------- |
+| 국내 명소·숙소 | [한국관광공사 TourAPI](https://www.data.go.kr/data/15101578/openapi.do) | 명소 이미지 포함            |
+| 해외 명소    | [Geoapify](https://www.geoapify.com/places-api/)                  | 좌표·주소 조회             |
+| 해외 명소 사진 | [Wikipedia](https://www.wikipedia.org/)                           | 대표 사진이 없으면 그라디언트로 대체 |
+| 해외 항공    | [Duffel](https://duffel.com/)                                     | 테스트 모드의 왕복 항공편       |
+| 해외 호텔    | [LiteAPI](https://www.liteapi.travel/)                            | 샌드박스 환경              |
+
 
 각 서비스의 무료 한도와 테스트 정책은 바뀔 수 있습니다. 데이터 소스를 선택한 기준과 폴백
 방식은 [`docs/data-sources.md`](docs/data-sources.md)에 정리했습니다.
 
 ## 기술 스택
 
-| 구분 | 스택 |
-|---|---|
-| 백엔드 | Python 3.12 · FastAPI · LangGraph · SQLAlchemy · httpx |
-| 프론트엔드 | Vite · React · SSE 스트리밍 |
-| LLM | elice AI Cloud 역할별 티어(reasoning·standard·fast) · OpenAI 폴백 |
-| 데이터베이스 | PostgreSQL · pgvector · Alembic |
-| 인증 | JWT(PyJWT) · bcrypt |
-| 패키지 관리 | uv · npm |
+
+| 구분     | 스택                                                         |
+| ------ | ---------------------------------------------------------- |
+| 백엔드    | Python 3.12 · FastAPI · LangGraph · SQLAlchemy · httpx     |
+| 프론트엔드  | Vite · React · SSE 스트리밍                                    |
+| LLM    | elice AI Cloud 역할별 티어(reasoning·standard·fast) · OpenAI 폴백 |
+| 데이터베이스 | PostgreSQL · pgvector · Alembic                            |
+| 인증     | JWT(PyJWT) · bcrypt                                        |
+| 패키지 관리 | uv · npm                                                   |
+
 
 ## 아키텍처
 
@@ -160,16 +166,18 @@ cd backend
 
 ## API
 
-| 메서드 | 경로 | 설명 |
-|---|---|---|
-| `POST` | `/chat` | 사용자 메시지를 받아 턴별 카드가 포함된 응답 반환 |
-| `POST` | `/chat/stream` | 텍스트 토큰과 완성된 카드를 SSE로 전송 |
-| `POST` | `/auth/register` | 회원가입 후 JWT 발급 |
-| `POST` | `/auth/login` | 로그인 후 JWT 발급 |
-| `GET` | `/auth/me` | 로그인한 사용자 정보 조회 |
-| `GET` | `/me/trips` | 로그인한 사용자의 여행·예약 목록 조회 |
-| `GET` | `/details/hotel` | 호텔 사진·편의시설·체크인 정보를 포함한 상세 조회 |
-| `GET` | `/health` | 서버 상태 확인 |
+
+| 메서드    | 경로               | 설명                           |
+| ------ | ---------------- | ---------------------------- |
+| `POST` | `/chat`          | 사용자 메시지를 받아 턴별 카드가 포함된 응답 반환 |
+| `POST` | `/chat/stream`   | 텍스트 토큰과 완성된 카드를 SSE로 전송      |
+| `POST` | `/auth/register` | 회원가입 후 JWT 발급                |
+| `POST` | `/auth/login`    | 로그인 후 JWT 발급                 |
+| `GET`  | `/auth/me`       | 로그인한 사용자 정보 조회               |
+| `GET`  | `/me/trips`      | 로그인한 사용자의 여행·예약 목록 조회        |
+| `GET`  | `/details/hotel` | 호텔 사진·편의시설·체크인 정보를 포함한 상세 조회 |
+| `GET`  | `/health`        | 서버 상태 확인                     |
+
 
 ## 프로젝트 구조
 
