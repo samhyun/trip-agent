@@ -68,7 +68,8 @@ export default function HotelResults({ payload, selectedHotel, locked = false, d
                 <div className="hotel-card__footer">
                   <span className="hotel-card__price">{won(hotel.price)}</span>
                   <span className="hotel-card__price-unit">/ 박</span>
-                  <button type="button" className="card-detail-btn" style={{ marginLeft: 'auto' }} onClick={() => setDetailHotel(hotel)}>
+                  <div className="card-actions">
+                  <button type="button" className="card-detail-btn" onClick={() => setDetailHotel(hotel)}>
                     상세
                   </button>
                   {isSelected ? (
@@ -104,6 +105,7 @@ export default function HotelResults({ payload, selectedHotel, locked = false, d
                       {locked ? '선택 불가' : '선택'}
                     </button>
                   )}
+                  </div>
                 </div>
               </div>
             </div>

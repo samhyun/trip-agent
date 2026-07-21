@@ -255,7 +255,9 @@ a:hover {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 24px 26px 8px;
+  /* 초광폭 화면에서 말풍선·카드가 무한정 늘어나는 것 방지 — 좌우 패딩으로 콘텐츠 폭을 880px로
+     제한해 중앙 정렬한다. 내부의 % 폭 규칙(.msg-row 84%·78%)은 그대로 유효. */
+  padding: 24px max(26px, calc((100% - 880px) / 2)) 8px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -1871,6 +1873,14 @@ a:hover {
 }
 
 /* ==================== 상세 모달 (호텔·항공) ==================== */
+/* 카드 푸터 우측 액션 그룹(상세·선택) — 가격은 좌측, 버튼들은 우측에 나란히 */
+.card-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .card-detail-btn {
   background: none; border: 1px solid var(--border); color: var(--muted);
   font-family: inherit; font-size: 12px; font-weight: 700; padding: 6px 11px;

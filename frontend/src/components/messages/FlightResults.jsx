@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { won } from '../../lib/format'
+import FlightDetailModal from './FlightDetailModal'
 
 // 왕복(가는 편+오는 편이 한 옵션) 항공 카드. 한 옵션을 고르면 왕복이 선택된다.
 function isSameFlight(sel, f) {
@@ -14,6 +15,7 @@ function isSameFlight(sel, f) {
 
 export default function FlightResults({ payload, selectedFlight, locked = false, dispatch }) {
   const { flights = [], route, depLabel, returnLabel, depDate } = payload
+  const [detailFlight, setDetailFlight] = useState(null)
   // 이미 선택한 항공편이 있으면(예약 완료 재마운트) 그 항목이 보이도록 펼친 채로 시작
   const [showAll, setShowAll] = useState(Boolean(selectedFlight))
   useEffect(() => {
@@ -61,13 +63,18 @@ export default function FlightResults({ payload, selectedFlight, locked = false,
               </div>
               <div className="flight-rt__foot">
                 <span className="flight-card__price">{won(f.price)}</span>
-                {selected ? (
-                  <span className="flight-card__selected-tag">✓ 선택됨</span>
-                ) : (
-                  <button type="button" className="flight-card__select-btn" disabled={locked} onClick={() => select(f)}>
-                    {locked ? '선택 불가' : '선택'}
+                <div className="card-actions">
+                  <button type="button" className="card-detail-btn" onClick={() => setDetailFlight(f)}>
+                    상세
                   </button>
-                )}
+                  {selected ? (
+                    <span className="flight-card__selected-tag">✓ 선택됨</span>
+                  ) : (
+                    <button type="button" className="flight-card__select-btn" disabled={locked} onClick={() => select(f)}>
+                      {locked ? '선택 불가' : '선택'}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           )
@@ -78,6 +85,7 @@ export default function FlightResults({ payload, selectedFlight, locked = false,
           </button>
         )}
       </div>
+      {detailFlight && <FlightDetailModal flight={detailFlight} route={route} onClose={() => setDetailFlight(null)} />}
     </div>
   )
 }

@@ -44,11 +44,19 @@ function useConversation() {
     if (!trimmed || busy.current) return
     busy.current = true
     raw({ type: 'USER_MESSAGE', text: trimmed })
+    // 카드에서 고른 항공·숙소는 로컬 상태라 백엔드가 모른다 → 매 발화에 선택 상태를 붙여 전달.
+    // ("이걸로 예약하고싶어" 같은 지칭을 에이전트가 이해하고 다음 단계로 넘어가게.) 화면엔 원문만 표시.
+    // NOTE(데모 스코프): 별도 API 필드 대신 메시지 접두를 사용 — 위조해도 자기 대화 라우팅에만 영향.
+    const t = stateRef.current.trip
+    const ctx = []
+    if (t.flight) ctx.push(`항공 ${t.flight.air} ${t.flight.outDep} 출발(왕복 ${t.flight.price?.toLocaleString?.() || t.flight.price}원) 선택됨`)
+    if (t.hotels.length > 0) ctx.push(`숙소 ${t.hotels.map((h) => `${h.name} ${h.nights ?? ''}박`.trim()).join(', ')} 선택됨`)
+    const message = ctx.length ? `[화면 선택 상태: ${ctx.join(' / ')}]\n${trimmed}` : trimmed
     const controller = new AbortController()
     abortRef.current = controller
     try {
       await streamChat({
-        message: trimmed,
+        message,
         conversationId: convId.current,
         signal: controller.signal,
         onEvent: (ev) => {

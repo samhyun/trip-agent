@@ -14,11 +14,12 @@ export default function FlightDetailModal({ flight, route, onClose }) {
     }
   }, [onClose])
 
-  const stops = Number(flight.stops) || 0
+  // 왕복 카드 데이터 계약(outDep/outArr/inDep/inArr) 기준. 구버전 편도 필드(dep/arr)는 폴백.
+  const outbound = flight.outDep ? `${flight.outDep} → ${flight.outArr || '-'}` : `${flight.dep || '-'} → ${flight.arr || '-'}`
   const rows = [
     ['구간', route || flight.route || '항공편'],
-    ['출발 → 도착', `${flight.dep} → ${flight.arr}`],
-    ['소요 시간', `${flight.dur || '-'} · ${stops === 0 ? '직항' : `${stops}회 경유`}`],
+    ['가는 편', outbound],
+    ...(flight.inDep ? [['오는 편', `${flight.inDep} → ${flight.inArr || '-'}`]] : []),
     ['좌석 등급', '이코노미'],
     ['수하물', '위탁 1개(15~20kg) · 기내 1개(10kg)'],
   ]
