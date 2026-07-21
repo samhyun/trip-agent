@@ -11,7 +11,7 @@ from urllib.parse import urlencode
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.providers import intl, liteapi, place, registry, tour_api, weather
+from app.providers import intl, liteapi, place, registry, tour_api
 from app.services.data_loader import load
 
 logger = get_logger(__name__)
@@ -178,16 +178,10 @@ def build_destination_payload(city: str, attractions: list[dict]) -> dict:
     payload = {"city": city, "items": items}
     # lat/lng가 0인 정상 좌표를 배제하지 않도록 None 검사
     points = [(a["lat"], a["lng"]) for a in items if a.get("lat") is not None and a.get("lng") is not None]
-    if points:
-        # 키 노출 방지: 프론트엔 백엔드 프록시 경로만 주고, 지도 이미지는 /details/map이 대신 가져온다
-        if get_settings().has_geoapify:
-            pts_param = ";".join(f"{la:.5f},{lo:.5f}" for la, lo in points[:20])
-            payload["mapPath"] = "/details/map?" + urlencode({"pts": pts_param})
-        clat = sum(p[0] for p in points) / len(points)
-        clon = sum(p[1] for p in points) / len(points)
-        wx = weather.current(lat=clat, lon=clon)  # 명소 중심 좌표의 현재 날씨
-        if wx:
-            payload["weather"] = wx
+    # 명소 마커 지도(키는 프록시 뒤에 숨김). 날씨는 명소 카드마다 반복돼 산만해 제외 — 필요 시 별도 노출.
+    if points and get_settings().has_geoapify:
+        pts_param = ";".join(f"{la:.5f},{lo:.5f}" for la, lo in points[:20])
+        payload["mapPath"] = "/details/map?" + urlencode({"pts": pts_param})
     return payload
 
 

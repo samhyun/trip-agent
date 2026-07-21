@@ -99,8 +99,10 @@ function useConversation() {
   const dispatch = useCallback(
     (action) => {
       const s = stateRef.current
-      // 요청 처리 중에는 순수 로컬 미리보기 외 모든 카드 액션을 잠근다 (상태-대화 불일치 방지)
-      if (busy.current && action.type !== 'SELECT_ROUTE_PREVIEW') return undefined
+      // 요청 처리 중에는 순수 로컬 미리보기(동선 미리보기·명소 담기) 외 모든 카드 액션을 잠근다
+      if (busy.current && action.type !== 'SELECT_ROUTE_PREVIEW' && action.type !== 'TOGGLE_SPOT') {
+        return undefined
+      }
       switch (action.type) {
         case 'SEND_TEXT':
           return send(action.text)
@@ -113,11 +115,10 @@ function useConversation() {
         }
 
         case 'TOGGLE_SPOT': {
+          // 담기/빼기는 로컬 상태만 토글한다(에이전트 호출 없음) → 여러 명소를 자유롭게 담을 수 있다.
           const item = findCarouselItem(s.messages, action.spotId)
           if (!item) return undefined
-          const adding = !s.trip.spots.some((sp) => sp.id === item.id)
-          raw({ type: 'TOGGLE_SPOT', spot: item })
-          return send(adding ? `${item.name} 담아줘` : `${item.name} 뺄게`)
+          return raw({ type: 'TOGGLE_SPOT', spot: item })
         }
 
         case 'SELECT_FLIGHT':

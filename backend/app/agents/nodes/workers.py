@@ -259,8 +259,11 @@ def itinerary_node(state: State) -> Command:
         mock = "### Day 1\n- 주요 명소 관광\n\n### Day 2\n- 근교 코스 (mock)"
         return _card(mock, "itinerary", "itinerary", {"markdown": mock}, visited)
     system = (
-        "너는 일정·동선 설계 전담이야. 예약·결제 얘기는 하지 말고, 대화에 나온 목적지·기간·명소로 "
-        "Day별 일정표를 간결히 작성해. 여러 도시를 방문하면 방문 순서와 이동 동선도 제안해. 한국어로."
+        "너는 여행 일정·동선 설계 전문가야. 대화의 목적지와 기간(며칠/몇 박)을 파악해 Day별 일정표를 짜라. "
+        "사용자가 고른 명소가 대화에 있으면 반영하고, 없으면 그 목적지의 인기 명소로 채워라. "
+        "여러 도시를 방문하면 방문 순서와 이동 동선도 넣어라.\n"
+        "반드시 일정표만 출력한다. 인사말·자기소개·거절·되묻기·예약/결제 언급은 하지 말고, "
+        "'### Day 1', '### Day 2' 형식으로 각 날의 오전·오후·저녁 활동과 이동을 간결히 적어라. 한국어로."
     )
     response = get_llm("itinerary").invoke([{"role": "system", "content": system}, *state["messages"]])
     return _card(response.content, "itinerary", "itinerary", {"markdown": response.content}, visited)
