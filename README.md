@@ -73,7 +73,9 @@
 | 프론트엔드  | Vite · React · SSE 스트리밍                                    |
 | LLM    | elice AI Cloud 역할별 티어(reasoning·standard·fast) · OpenAI 폴백 |
 | 데이터베이스 | PostgreSQL · pgvector · Alembic                            |
+| 관측     | LangSmith 트레이싱 (선택)                                        |
 | 인증     | JWT(PyJWT) · bcrypt                                        |
+| 테스트    | pytest(유닛) · vitest(프론트) · 골든셋 회귀(LLM judge)              |
 | 패키지 관리 | uv · npm                                                   |
 
 
@@ -101,8 +103,9 @@ flowchart LR
 - **대화 상태**: 대화를 DB에 저장하고 매 턴 전체 기록에서 목적지·날짜·인원 등의 슬롯을 다시 추출합니다.
 - **프롬프트 관리**: 에이전트별 프롬프트를 `backend/app/agents/prompts/*.md`에 분리했습니다. 로더가 `<<PERSONA>>`와 `<<CURRENT_TIME>>`을 주입하며 파일 변경 사항을 즉시 반영합니다.
 - **판단과 실행 분리**: LLM은 검색 조건과 사용자 의도를 판단합니다. API 호출, 필터링, 정렬, 카드 변환은 코드에서 처리합니다.
-- **외부 API 장애 대응**: provider를 차례로 호출해 사용할 수 있는 첫 결과를 선택하고, 모두 실패하면 mock 데이터로 전환합니다.
-- **응답 지연 관리**: 명소 API를 병렬로 호출하고 결과를 캐시합니다. 목적지를 파악하면 백그라운드에서 필요한 데이터를 미리 조회합니다.
+- **외부 API 장애 대응**: provider를 차례로 호출해 사용할 수 있는 첫 결과를 선택하고, 모두 실패하면 mock 데이터로 전환합니다. provider가 연속으로 실패하면 서킷브레이커가 일정 시간 그 provider를 건너뛰어(빠른 실패) 지연이 쌓이는 것을 막습니다.
+- **응답 지연 관리**: 명소 API를 병렬로 호출하고 결과를 캐시하며, 목적지를 파악하면 백그라운드에서 필요한 데이터를 미리 조회합니다. FAQ 답변은 의미가 비슷한 반복 질문에 시맨틱 캐시로 이전 답을 재사용합니다.
+- **관측**: `LANGSMITH_*` 환경변수만 설정하면 LangSmith 트레이싱이 켜져, 요청이 노드별로 어떻게 흐르고 얼마나 걸리는지, 토큰을 얼마나 쓰는지 추적합니다.
 
 ## 빠른 시작
 
@@ -123,7 +126,8 @@ cp .env.example .env
 `.env`에 LLM 키를 설정합니다. elice AI Cloud를 사용한다면 공용 `LLM_*` 값이나 역할별
 `REASONING_*`, `STANDARD_*`, `FAST_*` 값을 입력합니다. OpenAI를 사용한다면
 `OPENAI_API_KEY`를 입력합니다. TourAPI·Geoapify·Duffel·LiteAPI 키는 필요한 데이터만
-선택해서 설정할 수 있습니다.
+선택해서 설정할 수 있습니다. LangSmith 트레이싱을 쓰려면 `LANGSMITH_TRACING`,
+`LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`를 추가로 설정합니다(선택).
 
 ### 2. 의존성 설치와 데이터베이스 준비
 
@@ -153,16 +157,31 @@ make frontend
 브라우저에서 `http://localhost:5173`을 열면 됩니다. 백엔드 상태는
 `http://localhost:8000/health`에서 확인할 수 있습니다.
 
-### E2E 시나리오
+### 테스트
 
-라이브 E2E는 실행 중인 백엔드와 LLM·데이터 API 키가 필요한 통합 시나리오입니다.
+결정론 로직(날짜·박수·총액 계산, 결제·FAQ 게이트 등)은 외부 의존 없이 오프라인에서 도는
+유닛 테스트로 덮습니다.
 
 ```bash
-cd backend
-.venv/bin/python tests/e2e/scenarios.py
+make test            # 백엔드 유닛(pytest) + 프론트 유닛(vitest)
+make test-backend    # 결정론 로직 유닛만
+make test-frontend   # reducer·포맷 등 프론트 순수 로직만
 ```
 
-외부 API 응답이나 모델 출력이 달라지면 일부 기대값을 함께 조정해야 할 수 있습니다.
+에이전트의 판단(비결정)은 골든셋으로 회귀 테스트합니다. 대표 발화마다 구조 단언과 LLM judge로
+통과 여부를 재고, 통과율 미달이 하나라도 있으면 종료코드로 알립니다. 실 LLM을 호출하므로
+LLM 키(elice AI Cloud 또는 OpenAI)가 필요합니다.
+
+```bash
+make golden          # 골든셋 회귀 (LLM judge 포함)
+```
+
+라이브 E2E는 실행 중인 백엔드와 LLM·데이터 API 키가 필요한 통합 시나리오입니다. 외부 API
+응답이나 모델 출력이 달라지면 일부 기대값을 함께 조정해야 할 수 있습니다.
+
+```bash
+make e2e
+```
 
 ## API
 
@@ -185,7 +204,7 @@ cd backend
 backend/app/
 ├── main.py                 # FastAPI 진입점
 ├── api/routes/             # chat · auth · trips · details
-├── core/                   # 환경설정 · 키 마스킹 로깅
+├── core/                   # 환경설정 · 키 마스킹 로깅 · 서킷브레이커
 ├── agents/
 │   ├── graph.py            # 그래프 구성과 스트리밍 실행
 │   ├── state.py            # 대화·여행 상태와 팀 구성
@@ -198,6 +217,8 @@ backend/app/
 └── data/                   # mock JSON과 FAQ 데이터
 
 backend/scripts/            # 응답 지연 측정 스크립트
+backend/tests/unit/         # 오프라인 유닛 테스트 (결정론 로직)
+backend/tests/golden/       # 골든셋 회귀 (비결정 판단, LLM judge)
 backend/tests/e2e/          # 라이브 서버 통합 시나리오
 frontend/src/               # React 채팅 UI와 리치 카드
 ```
