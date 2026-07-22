@@ -3,14 +3,22 @@
 `uvicorn app.main:app` 으로 기동한다. CORS 허용 + 라우터 등록 + 헬스 체크.
 """
 
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from pathlib import Path
 
-from app.api.routes import auth_router, chat_router, details_router, trips_router
-from app.api.schemas import HealthResponse
-from app.core.config import get_settings
-from app.core.logging import get_logger, setup_logging
+from dotenv import load_dotenv
+
+# 루트 .env → os.environ. app.* import보다 먼저 실행해야
+# 라이브러리(LangSmith 등)가 초기화 전 변수를 본다. (pydantic Settings는 env_file로 별개 로드)
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+
+from fastapi import FastAPI, Request  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
+
+from app.api.routes import auth_router, chat_router, details_router, trips_router  # noqa: E402
+from app.api.schemas import HealthResponse  # noqa: E402
+from app.core.config import get_settings  # noqa: E402
+from app.core.logging import get_logger, setup_logging  # noqa: E402
 
 setup_logging()
 logger = get_logger(__name__)

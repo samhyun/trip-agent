@@ -25,16 +25,16 @@ _BACKEND = os.path.dirname(os.path.dirname(_HERE))  # tests/golden → backend
 sys.path.insert(0, _BACKEND)
 sys.path.insert(0, _HERE)
 
-from dotenv import find_dotenv, load_dotenv  # noqa: E402
+from dotenv import load_dotenv  # noqa: E402
 
-load_dotenv(find_dotenv())  # 루트 .env → os.environ (LangSmith 트레이싱이 골든 실행에도 걸리도록)
+# 루트 .env → os.environ (골든 실행에도 LangSmith 트레이싱이 걸리도록)
+load_dotenv(os.path.join(os.path.dirname(_BACKEND), ".env"))
 
 from cases import GOLDENS  # noqa: E402
 
 from app.agents.graph import run_agent  # noqa: E402
 from app.agents.llm import get_llm  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
-
 
 # ---------- 구조·계약 단언 (결정적) ----------
 
