@@ -13,9 +13,13 @@
 
 from typing import Protocol, runtime_checkable
 
+from app.core.circuit_breaker import CircuitBreaker
 from app.core.logging import get_logger, redact
 
 logger = get_logger(__name__)
+
+# provider별 서킷브레이커(이름 기준). 연속 3회 실패하면 60초 동안 그 provider를 건너뛴다.
+_breaker = CircuitBreaker(threshold=3, cooldown=60.0)
 
 # 도메인 결과 타입: 명소/숙박은 list[dict], 항공은 flights dict.
 Result = list[dict] | dict
@@ -43,13 +47,20 @@ def first_available(providers: list[Provider], city: str, limit: int, **kwargs) 
     for provider in providers:
         if not provider.supports(city):
             continue
+        if not _breaker.allow(provider.name):  # open/half-open 차단 → 건너뜀(빠른 실패)
+            logger.info("provider %s 차단됨(circuit) → 다음으로", provider.name)
+            continue
         try:
             result = provider.fetch(city, limit, **kwargs)
         except Exception as exc:  # noqa: BLE001 - provider 실패는 다음 provider/mock로 흡수
             logger.warning("provider %s fetch 실패(%s): %s", provider.name, city, redact(exc))
+            _breaker.record_failure(provider.name)  # 예외(장애)만 실패로 집계
             continue
+        # 응답이 왔으면(빈 결과 포함) provider는 살아있음 → 실패 카운트 리셋
+        _breaker.record_success(provider.name)
         if result:
             n = len(result) if isinstance(result, list) else len(result.get("date_prices", []))
             logger.info("provider %s → %s (%d)", provider.name, city, n)
             return result
+        # 빈 결과는 '미커버'라 다음 provider로 (provider 자체는 alive로 처리됨)
     return None
