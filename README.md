@@ -40,7 +40,7 @@
 ## 데이터 사용 방식
 
 외부 데이터 API 키는 선택 사항입니다. 키가 없거나 API 호출에 실패하면 저장소의 mock JSON을
-사용합니다. 에이전트가 대화를 해석하고 계획을 세우려면 elice AI Cloud 또는 OpenAI API 키가
+사용합니다. 에이전트가 대화를 해석하고 계획을 세우려면 LLM API 키가
 필요합니다.
 
 
@@ -71,7 +71,7 @@
 | ------ | ---------------------------------------------------------- |
 | 백엔드    | Python 3.12 · FastAPI · LangGraph · SQLAlchemy · httpx     |
 | 프론트엔드  | Vite · React · SSE 스트리밍                                    |
-| LLM    | elice AI Cloud 역할별 티어(reasoning·standard·fast) · OpenAI 폴백 |
+| LLM    | OpenAI 호환 엔드포인트 · 역할별 티어(reasoning·standard·fast) |
 | 데이터베이스 | PostgreSQL · pgvector · Alembic                            |
 | 관측     | LangSmith 트레이싱 (선택)                                        |
 | 인증     | JWT(PyJWT) · bcrypt                                        |
@@ -115,7 +115,7 @@ flowchart LR
 - [uv](https://docs.astral.sh/uv/)
 - Node.js와 npm
 - Docker와 Docker Compose
-- elice AI Cloud 또는 OpenAI API 키
+- LLM API 키 (OpenAI 호환 엔드포인트)
 
 ### 1. 환경변수 설정
 
@@ -123,7 +123,7 @@ flowchart LR
 cp .env.example .env
 ```
 
-`.env`에 LLM 키를 설정합니다. elice AI Cloud를 사용한다면 공용 `LLM_*` 값이나 역할별
+`.env`에 LLM 키를 설정합니다. OpenAI 호환 엔드포인트를 쓴다면 공용 `LLM_*` 값이나 역할별
 `REASONING_*`, `STANDARD_*`, `FAST_*` 값을 입력합니다. OpenAI를 사용한다면
 `OPENAI_API_KEY`를 입력합니다. TourAPI·Geoapify·Duffel·LiteAPI 키는 필요한 데이터만
 선택해서 설정할 수 있습니다. LangSmith 트레이싱을 쓰려면 `LANGSMITH_TRACING`,
@@ -170,7 +170,7 @@ make test-frontend   # reducer·포맷 등 프론트 순수 로직만
 
 에이전트의 판단(비결정)은 골든셋으로 회귀 테스트합니다. 대표 발화마다 구조 단언과 LLM judge로
 통과 여부를 재고, 통과율 미달이 하나라도 있으면 종료코드로 알립니다. 실 LLM을 호출하므로
-LLM 키(elice AI Cloud 또는 OpenAI)가 필요합니다.
+LLM API 키가 필요합니다.
 
 ```bash
 make golden          # 골든셋 회귀 (LLM judge 포함)

@@ -34,7 +34,7 @@ test-frontend: ## 프론트 유닛 테스트 (vitest)
 e2e: ## 라이브 E2E 시나리오 (실행 중 백엔드 + LLM·API 키 필요)
 	cd backend && uv run python tests/e2e/scenarios.py
 
-golden: ## 골든셋 회귀 (에이전트 실호출·LLM judge — LLM 키(elice/OpenAI) 필요, 비용 발생)
+golden: ## 골든셋 회귀 (에이전트 실호출·LLM judge — LLM API 키 필요, 비용 발생)
 	cd backend && uv run python tests/golden/run.py
 
 lint: ## 린트 (ruff)
