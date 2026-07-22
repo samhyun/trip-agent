@@ -43,25 +43,42 @@ def _last_user_text(messages) -> str:
     return getattr(last, "content", "") if last else ""
 
 
+def _reply(answer: str) -> Command:
+    return Command(update={"messages": [AIMessage(content=answer, name="faq")]}, goto=END)
+
+
 def faq_node(state: State) -> Command:
-    """FAQ를 검색해 근거로 삼아 답변한다."""
+    """FAQ를 검색해 근거로 삼아 답변한다. 의미가 비슷한 반복 질문은 시맨틱 캐시로 재사용한다."""
     query = _last_user_text(state["messages"])
+    settings = get_settings()
+
+    # 시맨틱 캐시: 비슷한 질문에 이전 답변 재사용 → 검색·LLM 생성 스킵 (캐시는 best-effort)
+    q_emb = None
+    if settings.has_embedding:
+        try:
+            q_emb = rag_service.embed_query(query)
+            cached = rag_service.cache_lookup(q_emb)
+            if cached is not None:
+                logger.info("faq: 시맨틱 캐시 히트 → '%s'", query[:30])
+                return _reply(cached)
+        except Exception as exc:  # noqa: BLE001 - 캐시 실패해도 정상 경로로 진행
+            logger.warning("faq 시맨틱 캐시 스킵: %s", exc)
+            q_emb = None
+
+    gen = rag_service.current_generation()  # search가 볼 FAQ 세대 (저장 때 대조 → 재시드 경합 방지)
     results = rag_service.search_faq(query, top_k=3)
     logger.info("faq: '%s' → 관련 FAQ %d개", query[:30], len(results))
 
     # 임계값 통과 FAQ가 없음(무관 질문) → 근거 없이 지어내지 않고 안내만
+    # 부정 결과는 캐시하지 않는다(임계 근처 질문이 나중에 FAQ에 걸릴 수 있어 검색을 막지 않음)
     if not results:
-        return Command(
-            update={"messages": [AIMessage(content=_NO_FAQ_MSG, name="faq")]},
-            goto=END,
-        )
+        return _reply(_NO_FAQ_MSG)
 
     context = "\n\n".join(f"Q: {f['question']}\nA: {f['answer']}" for f in results)
 
-    if not get_settings().llm_enabled:
-        # 폴백: 가장 관련 있는 FAQ 답변만 사용 → 그 1건만 출처 표기
-        answer = results[0]["answer"] + _citation(results[:1])
-        return Command(update={"messages": [AIMessage(content=answer, name="faq")]}, goto=END)
+    if not settings.llm_enabled:
+        # 폴백: 가장 관련 있는 FAQ 답변만 사용 → 그 1건만 출처 표기 (LLM 미설정이라 캐시 안 함)
+        return _reply(results[0]["answer"] + _citation(results[:1]))
 
     response = get_llm("standard").invoke(
         [
@@ -72,4 +89,9 @@ def faq_node(state: State) -> Command:
     # LLM 빈 응답이면 최상위 FAQ 답변으로 폴백(출처만 남지 않게). 근거로 준 FAQ 전체를 출처 표기.
     content = (response.content or "").strip() or results[0]["answer"]
     answer = content + _citation(results)
-    return Command(update={"messages": [AIMessage(content=answer, name="faq")]}, goto=END)
+    if q_emb is not None:
+        try:
+            rag_service.cache_store(q_emb, answer, gen)
+        except Exception as exc:  # noqa: BLE001 - 저장 실패해도 답변은 반환(best-effort)
+            logger.warning("faq 시맨틱 캐시 저장 스킵: %s", exc)
+    return _reply(answer)
