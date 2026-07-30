@@ -9,7 +9,8 @@ from app.providers import geoapify, liteapi, tour_api
 from app.providers.base import Provider, Result, first_available
 
 # 도메인별 provider (리스트 순서 = 우선순위). 국내 우선, 없으면 해외 provider가 커버.
-# 항공은 왕복 조회라 단일 provider 함수(duffel.roundtrip)를 travel_service가 직접 부른다.
+# 항공은 왕복 조회라 폴백 목록 없이 단일 provider 함수(duffel.roundtrip)를 travel_service가
+# 직접 부른다. 다만 서킷은 base.call_with_breaker로 동일하게 적용한다.
 ATTRACTIONS: list[Provider] = [tour_api.TourApiAttractions(), geoapify.GeoapifyAttractions()]
 STAYS: list[Provider] = [tour_api.TourApiStays(), liteapi.LiteApiStays()]
 

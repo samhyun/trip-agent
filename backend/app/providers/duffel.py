@@ -14,6 +14,7 @@ import httpx
 
 from app.core.config import get_settings
 from app.core.logging import get_logger, redact
+from app.providers.base import ProviderUnavailable
 from app.providers.intl import INTL_CITIES, ORIGIN_AIRPORT, supports_intl, to_krw
 
 logger = get_logger(__name__)
@@ -66,7 +67,12 @@ def _fmt_duration(iso: str | None) -> str:
 
 
 def _offers(dest: str, dep_date: str, return_date: str | None) -> list[dict]:
-    """왕복(ICN→dest→ICN) offer 목록. return_date 없으면 편도. 실패 시 []."""
+    """왕복(ICN→dest→ICN) offer 목록. return_date 없으면 편도.
+
+    장애(타임아웃·5xx·인증 실패·비정상 응답)는 ProviderUnavailable로 올린다.
+    정상 응답인데 해당 구간에 항공편이 없으면 빈 리스트다. 둘을 같은 값으로 돌려주면
+    서킷이 장애를 '항공편 없음'으로 읽는다.
+    """
     slices = [{"origin": ORIGIN_AIRPORT, "destination": dest, "departure_date": dep_date}]
     if return_date:
         slices.append({"origin": dest, "destination": ORIGIN_AIRPORT, "departure_date": return_date})
@@ -80,9 +86,29 @@ def _offers(dest: str, dep_date: str, return_date: str | None) -> list[dict]:
         )
         r.raise_for_status()
         return r.json()["data"].get("offers", [])
-    except Exception as exc:  # noqa: BLE001
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
         logger.warning("Duffel offers 실패(%s %s~%s): %s", dest, dep_date, return_date, redact(exc))
-        return []
+        raise ProviderUnavailable("duffel.offers") from exc
+
+
+def _norm_dates(dep_date: str | None, return_date: str | None) -> tuple[str, str | None]:
+    """조회·캐시 키에 함께 쓰는 날짜 정규화(과거·미지정 방어 포함)."""
+    dep = _dates(1, dep_date)[0]
+    ret = _dates(1, return_date)[0] if return_date else None
+    return dep, ret
+
+
+def cached_roundtrip(city: str, dep_date: str | None, return_date: str | None) -> dict | None:
+    """이미 조회해 둔 왕복 결과(HTTP 없음). 없으면 None.
+
+    캐시 히트를 서킷 성공으로 세면 쌓인 실패 횟수가 지워진다. 항공은 도시가 서킷 키를
+    공유하므로 캐시된 도시 하나가 다른 도시의 장애 기록을 없애버린다. 그래서 분리했다.
+    """
+    meta = INTL_CITIES.get(city)
+    if not meta or not meta.get("airport"):
+        return None
+    dep, ret = _norm_dates(dep_date, return_date)
+    return _CACHE.get((city, dep, ret or ""))
 
 
 def roundtrip(city: str, dep_date: str | None, return_date: str | None) -> dict | None:
@@ -90,8 +116,7 @@ def roundtrip(city: str, dep_date: str | None, return_date: str | None) -> dict 
     meta = INTL_CITIES.get(city)
     if not meta or not meta.get("airport") or not get_settings().has_duffel:
         return None  # 공항코드 미해석(자동 해석 실패) 시 항공 조회 생략
-    dep = _dates(1, dep_date)[0]  # 과거·미지정 방어 포함
-    ret = _dates(1, return_date)[0] if return_date else None
+    dep, ret = _norm_dates(dep_date, return_date)
     cache_key = (city, dep, ret or "")
     if cache_key in _CACHE:
         return _CACHE[cache_key]
@@ -100,22 +125,28 @@ def roundtrip(city: str, dep_date: str | None, return_date: str | None) -> dict 
     offers = _offers(dest, dep, ret)
     if not offers:
         return None
-    cheapest = sorted(offers, key=lambda o: float(o["total_amount"]))[:PER_DATE]
-    flights = []
-    for o in cheapest:
-        slices = o["slices"]
-        out = slices[0]["segments"]
-        opt = {
-            "air": o["owner"]["name"],
-            "outDep": out[0]["departing_at"][11:16],
-            "outArr": out[-1]["arriving_at"][11:16],
-            "price": to_krw(o["total_amount"]),  # 왕복 총액
-        }
-        if len(slices) > 1:  # 오는 편
-            inb = slices[1]["segments"]
-            opt["inDep"] = inb[0]["departing_at"][11:16]
-            opt["inArr"] = inb[-1]["arriving_at"][11:16]
-        flights.append(opt)
+    # 정규화도 응답 스키마에 의존한다. 200이지만 필드가 빠진 응답(예: offers=[{}])을 여기서
+    # 흘려보내면 서킷이 집계하지 못해 매 요청이 같은 provider를 다시 부른다.
+    try:
+        cheapest = sorted(offers, key=lambda o: float(o["total_amount"]))[:PER_DATE]
+        flights = []
+        for o in cheapest:
+            slices = o["slices"]
+            out = slices[0]["segments"]
+            opt = {
+                "air": o["owner"]["name"],
+                "outDep": out[0]["departing_at"][11:16],
+                "outArr": out[-1]["arriving_at"][11:16],
+                "price": to_krw(o["total_amount"]),  # 왕복 총액
+            }
+            if len(slices) > 1:  # 오는 편
+                inb = slices[1]["segments"]
+                opt["inDep"] = inb[0]["departing_at"][11:16]
+                opt["inArr"] = inb[-1]["arriving_at"][11:16]
+            flights.append(opt)
+    except (KeyError, IndexError, ValueError, TypeError) as exc:
+        logger.warning("Duffel 응답 형식이 예상과 다름(%s): %s", city, redact(exc))
+        raise ProviderUnavailable("duffel.offers.parse") from exc
 
     result = {"route": f"인천 ↔ {city}", "depDate": dep, "returnDate": ret, "flights": flights}
     logger.info("Duffel 왕복[%s] %d옵션 (%s~%s)", city, len(flights), dep, ret)

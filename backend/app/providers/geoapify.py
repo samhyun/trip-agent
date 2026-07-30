@@ -14,6 +14,7 @@ import httpx
 from app.core.config import get_settings
 from app.core.logging import get_logger, redact
 from app.providers import photos
+from app.providers.base import ProviderUnavailable
 from app.providers.intl import INTL_CITIES, supports_intl
 
 logger = get_logger(__name__)
@@ -35,9 +36,10 @@ def _geocode(query: str, api_key: str, country: str | None = None) -> dict | Non
         r.raise_for_status()
         results = r.json().get("results", [])
         return results[0] if results else None
-    except Exception as exc:  # noqa: BLE001 - 실패는 mock 폴백
+    # 통신·응답 형식 오류만 장애로 올린다(구현 오류는 전파해 서킷과 분리).
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
         logger.warning("Geoapify geocode 실패(%s): %s", query, redact(exc))
-        return None
+        raise ProviderUnavailable("geoapify.geocode") from exc
 
 
 def _photos_parallel(names: list[str]) -> dict[str, str | None]:
@@ -93,9 +95,10 @@ def _places_near(city: str, lat, lng, api_key: str, limit: int) -> list[dict]:
         )
         r.raise_for_status()
         feats = r.json().get("features", [])
-    except Exception as exc:  # noqa: BLE001 - 실패는 mock 폴백
+    # 통신·응답 형식 오류만 장애로 올린다(구현 오류는 전파해 서킷과 분리).
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
         logger.warning("Geoapify places 실패(%s): %s", city, redact(exc))
-        return []
+        raise ProviderUnavailable("geoapify.places") from exc
     named = [p for f in feats if (p := f.get("properties") or {}).get("name")][:limit]
     imgs = _photos_parallel([p["name"] for p in named])  # 사진 병렬 조회(직렬 지연 방지)
     result: list[dict] = []
@@ -148,6 +151,9 @@ class GeoapifyAttractions:
 
     def supports(self, city: str) -> bool:
         return supports_intl(city) and get_settings().has_geoapify
+
+    def cached(self, city: str, limit: int = 6) -> list[dict] | None:
+        return _CACHE.get((city, limit))
 
     def fetch(self, city: str, limit: int = 6) -> list[dict] | None:
         return search_attractions(city, limit)

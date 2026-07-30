@@ -15,14 +15,14 @@ params로 한 번 인코딩하므로, 이미 인코딩된(Encoding) 키가 들�
 """
 
 import re
-from urllib.parse import unquote
-
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import unquote
 
 import httpx
 
 from app.core.config import get_settings
 from app.core.logging import get_logger, redact
+from app.providers.base import ProviderUnavailable
 
 logger = get_logger(__name__)
 
@@ -85,7 +85,11 @@ def _service_key() -> str:
 
 
 def _call(operation: str, **params) -> list[dict] | None:
-    """KorService2 오퍼레이션 호출 → item 리스트. 실패/빈결과는 None."""
+    """KorService2 오퍼레이션 호출 → item 리스트.
+
+    장애(타임아웃·5xx·오류 응답코드)는 ProviderUnavailable, 빈 결과(미커버)는 None.
+    둘을 같은 값으로 돌려주면 first_available이 장애를 미커버로 읽어 서킷이 열리지 않는다.
+    """
     query = {
         "serviceKey": _service_key(),
         "MobileOS": "ETC",
@@ -99,14 +103,16 @@ def _call(operation: str, **params) -> list[dict] | None:
         resp = httpx.get(f"{BASE_URL}/{operation}", params=query, timeout=TIMEOUT)
         resp.raise_for_status()
         data = resp.json()  # 오류 시 XML이면 JSONDecodeError → except
-    except Exception as exc:  # noqa: BLE001 - 모든 실패는 mock 폴백으로 흡수
+    # 통신·응답 형식 오류만 장애로 올린다. 그 밖의 예외(구현 오류)는 그대로 전파해
+    # call_with_breaker가 서킷과 무관하게 드러내도록 둔다.
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
         logger.warning("TourAPI %s 실패: %s", operation, redact(exc))
-        return None
+        raise ProviderUnavailable(f"tour_api.{operation}") from exc
 
     header = data.get("response", {}).get("header", {})
     if header.get("resultCode") not in ("0000", "00", None):
         logger.warning("TourAPI %s 응답코드=%s (%s)", operation, header.get("resultCode"), header.get("resultMsg"))
-        return None
+        raise ProviderUnavailable(f"tour_api.{operation} resultCode={header.get('resultCode')}")
 
     body = data.get("response", {}).get("body", {})
     items = body.get("items")
@@ -136,17 +142,29 @@ def _strip_html(text) -> str:
     return _TAG_RE.sub("", text or "").strip()
 
 
+def _call_optional(operation: str, **params) -> list[dict] | None:
+    """상세 조회용 호출. 장애도 None으로 흡수한다.
+
+    상세는 폴백 루프(first_available) 밖에서 불려서 서킷 집계 대상이 아니고,
+    예외를 올리면 API 응답이 500이 된다. 조회 실패는 '상세 없음'으로 다룬다.
+    """
+    try:
+        return _call(operation, **params)
+    except ProviderUnavailable:
+        return None
+
+
 def stay_detail(content_id: str) -> dict | None:
     """국내 숙박 상세 (detailCommon2 + detailIntro2 + detailImage2)."""
     if not get_settings().has_tour_api:
         return None
-    common = _call("detailCommon2", contentId=content_id, numOfRows=1)
+    common = _call_optional("detailCommon2", contentId=content_id, numOfRows=1)
     if not common:
         return None
     c = common[0]
-    intro_list = _call("detailIntro2", contentId=content_id, contentTypeId=32, numOfRows=1)
+    intro_list = _call_optional("detailIntro2", contentId=content_id, contentTypeId=32, numOfRows=1)
     it = intro_list[0] if intro_list else {}
-    img_list = _call("detailImage2", contentId=content_id, imageYN="Y", numOfRows=12) or []
+    img_list = _call_optional("detailImage2", contentId=content_id, imageYN="Y", numOfRows=12) or []
 
     images = [_https(c.get("firstimage")), *[_https(x.get("originimgurl")) for x in img_list]]
     images = list(dict.fromkeys(i for i in images if isinstance(i, str) and i.startswith("https://")))[:12]
@@ -252,9 +270,19 @@ def search_attractions(city: str, limit: int = 8) -> list[dict] | None:
         seen.add(key)
         result.append(_to_attraction(it, city, len(result)))
 
+    def _keyword_items(kw: str) -> list[dict] | None:
+        """키워드 1건 조회. 개별 장애는 여기서 흡수한다(부족분은 아래 백필이 메운다).
+
+        provider가 정말 죽었다면 백필 호출도 실패해 그쪽에서 장애가 올라간다.
+        """
+        try:
+            return _call("searchKeyword2", keyword=kw, numOfRows=10)
+        except ProviderUnavailable:
+            return None
+
     if keywords:
         with ThreadPoolExecutor(max_workers=min(8, len(keywords))) as ex:
-            items_per_kw = list(ex.map(lambda kw: _call("searchKeyword2", keyword=kw, numOfRows=10), keywords))
+            items_per_kw = list(ex.map(_keyword_items, keywords))
         for kw, items in zip(keywords, items_per_kw):
             if len(result) >= limit:
                 break
@@ -355,6 +383,9 @@ class TourApiAttractions:
     def supports(self, city: str) -> bool:
         return _enabled(city)
 
+    def cached(self, city: str, limit: int = 8) -> list[dict] | None:
+        return _CACHE.get(("attractions", city, limit))
+
     def fetch(self, city: str, limit: int = 8) -> list[dict] | None:
         return search_attractions(city, limit)
 
@@ -366,6 +397,9 @@ class TourApiStays:
 
     def supports(self, city: str) -> bool:
         return _enabled(city)
+
+    def cached(self, city: str, limit: int = 6) -> list[dict] | None:
+        return _CACHE.get(("stays", city, limit))
 
     def fetch(self, city: str, limit: int = 6) -> list[dict] | None:
         return search_stays(city, limit)

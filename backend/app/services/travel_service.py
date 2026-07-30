@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.providers import duffel, intl, liteapi, place, registry, tour_api
+from app.providers.base import call_with_breaker
 from app.services.data_loader import load
 
 logger = get_logger(__name__)
@@ -128,6 +129,20 @@ def get_attractions(city: str) -> list[dict]:
 
 # ----- 항공 -----
 
+_FLIGHTS = "duffel.flights"  # 서킷 집계 키(도시가 달라도 provider는 하나다)
+
+
+def _flight_targets(query_or_city: str) -> list[str]:
+    """Duffel이 실제로 조회할 도시만 남긴다(입력 자체 → 문장에서 찾은 도시 순).
+
+    공항코드가 없는 값을 그대로 넘기면 HTTP 없이 None이 돌아오는데, 서킷은 그걸
+    '정상 응답, 항공편 없음'으로 읽어 실패 횟수를 지운다. 자연어 문장이나 국내 도시가
+    섞이면 그 리셋 때문에 서킷이 영영 열리지 않으므로 호출 전에 후보를 확정한다.
+    """
+    candidates = dict.fromkeys([query_or_city, *find_cities(query_or_city)])
+    return [c for c in candidates if (intl.INTL_CITIES.get(c) or {}).get("airport")]
+
+
 def search_flights(query_or_city: str, start_date: str | None = None, nights: int | None = None) -> dict | None:
     """왕복 항공(가는 편+오는 편이 한 옵션). 해외=Duffel 왕복, 국내/실패 시 mock 왕복 폴백.
 
@@ -135,11 +150,15 @@ def search_flights(query_or_city: str, start_date: str | None = None, nights: in
     """
     dep, ret = _trip_dates(start_date, nights)
     if not mock_only():
-        live = duffel.roundtrip(query_or_city, dep, ret)
-        if live:
-            return live
-        for city in find_cities(query_or_city):
-            live = duffel.roundtrip(city, dep, ret)
+        # 항공은 provider가 하나뿐이라 폴백 루프를 타지 않는다. 죽었을 때 매 요청이
+        # 타임아웃을 다시 기다리는 건 같은 문제라 서킷은 동일하게 적용한다.
+        for city in _flight_targets(query_or_city):
+            hit = duffel.cached_roundtrip(city, dep, ret)
+            if hit:  # 이미 받아둔 결과 → 서킷 판단 없이 그대로
+                return hit
+            live = call_with_breaker(
+                _FLIGHTS, lambda c=city: duffel.roundtrip(c, dep, ret), context=city
+            )
             if live:
                 return live
     return _mock_roundtrip(query_or_city, dep, ret)

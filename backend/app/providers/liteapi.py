@@ -13,6 +13,7 @@ import httpx
 
 from app.core.config import get_settings
 from app.core.logging import get_logger, redact
+from app.providers.base import ProviderUnavailable
 from app.providers.intl import INTL_CITIES, supports_intl, to_krw
 
 _TAG_RE = re.compile(r"<[^>]+>")
@@ -41,7 +42,7 @@ def _headers() -> dict:
 
 
 def _list_hotels(country: str, city_en: str, limit: int) -> list[dict]:
-    """도시의 호텔 목록(정적 정보). 실패 시 []."""
+    """도시의 호텔 목록(정적 정보). 장애는 ProviderUnavailable, 결과 없음은 []."""
     try:
         r = httpx.get(
             f"{BASE_URL}/data/hotels",
@@ -51,13 +52,19 @@ def _list_hotels(country: str, city_en: str, limit: int) -> list[dict]:
         )
         r.raise_for_status()
         return r.json().get("data", [])
-    except Exception as exc:  # noqa: BLE001
+    # 통신·응답 형식 오류만 장애로 올린다(구현 오류는 전파해 서킷과 분리).
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
         logger.warning("LiteAPI hotels 실패(%s): %s", city_en, redact(exc))
-        return []
+        raise ProviderUnavailable("liteapi.hotels") from exc
 
 
 def _rate_map(hotel_ids: list[str]) -> dict[str, int]:
-    """hotelId → 1박 요금(KRW). 요금 조회 실패 시 빈 dict(→ 데모값 폴백)."""
+    """hotelId → 1박 요금(KRW).
+
+    부가 조회라 실패해도 호텔 목록은 그대로 쓸 수 있다. 그래서 장애를 올리지 않고
+    빈 dict를 돌려주며, 호출부가 contentid 기반 데모 가격으로 채운다.
+    핵심 조회인 _list_hotels와 달리 서킷 집계 대상이 아니다.
+    """
     if not hotel_ids:
         return {}
     checkin, checkout = _stay_dates()
@@ -202,6 +209,9 @@ class LiteApiStays:
 
     def supports(self, city: str) -> bool:
         return supports_intl(city) and get_settings().has_liteapi
+
+    def cached(self, city: str, limit: int = 6) -> list[dict] | None:
+        return _CACHE.get((city, limit))
 
     def fetch(self, city: str, limit: int = 6) -> list[dict] | None:
         return search_stays(city, limit)
